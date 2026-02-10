@@ -1,13 +1,14 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
+// 🔥 Code එකේ Key එක නෑ, දැන් ගන්නේ .env එකෙන්
 const firebaseConfig = {
-  apiKey: "AIzaSyAC_pHHWH112RZhxHqz7ftrwNTpKMgf3DE",
-  authDomain: "my-guru-51071.firebaseapp.com",
-  projectId: "my-guru-51071",
-  storageBucket: "my-guru-51071.firebasestorage.app",
-  messagingSenderId: "408556655871",
-  appId: "1:408556655871:web:bb9b545e83cdd8545528ca",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
   measurementId: "G-M0YNGPXRZ2"
 };
 

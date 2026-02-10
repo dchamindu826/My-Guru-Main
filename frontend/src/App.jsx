@@ -2,32 +2,48 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 
-// --- Public User Components ---
+// Layouts
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import AdminLayout from './layouts/AdminLayout';
 
-// --- Public User Pages ---
+// Global Components
+import SupportWidget from './components/SupportWidget';
+import WhatsAppWidget from './components/WhatsAppWidget';
+
+// User Pages
 import Home from './pages/Home';
 import Profile from './pages/Profile';
+import Checkout from './pages/Checkout';
+import Chat from './pages/Chat';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
-import Chat from './pages/Chat';
-import Checkout from './pages/Checkout';
+import About from './pages/About';
+// Plans import eka ain kala 🔥
+import CustomBotService from './pages/CustomBotService'; 
 
-// --- Admin Components & Pages ---
-import AdminLayout from './admin/components/AdminLayout';
-import AdminLogin from './admin/pages/AdminLogin';
-import Dashboard from './admin/pages/Dashboard';
-import Orders from './admin/pages/Orders';
-import Packages from './admin/pages/Packages';
+// Admin Pages
+import AdminLogin from './pages/admin/Login';
+import AdminDashboard from './pages/admin/Dashboard';
+import AdminPlans from './pages/admin/AdminPlans';
+import AdminPayments from './pages/admin/Payments';
+import AdminUsers from './pages/admin/Users';
+import StudentFeedbacks from './pages/admin/StudentFeedbacks';
+import ManageFeedbacks from './pages/admin/ManageFeedbacks';
+import IngestDocs from './pages/admin/IngestDocs';
+import ManageAdmins from './pages/admin/ManageAdmins';
+import KnowledgeBase from './pages/admin/KnowledgeBase';
 
-// Public Layout (Navbar + Footer for users)
-const Layout = ({ children }) => (
-  <>
+const PublicLayout = ({ children }) => (
+  <div className="flex flex-col min-h-screen bg-[#050505]">
     <Navbar />
-    {children}
+    <div className="flex-grow pt-20"> 
+      {children}
+    </div>
+    <SupportWidget />
+    <WhatsAppWidget />
     <Footer />
-  </>
+  </div>
 );
 
 export default function App() {
@@ -35,33 +51,35 @@ export default function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          {/* =========================================
-              PUBLIC USER ROUTES
-          ========================================= */}
-          <Route path="/" element={<Layout><Home /></Layout>} />
-          <Route path="/profile" element={<Layout><Profile /></Layout>} />
-          <Route path="/checkout" element={<Layout><Checkout /></Layout>} />
-          <Route path="/privacy" element={<Layout><Privacy /></Layout>} />
-          <Route path="/terms" element={<Layout><Terms /></Layout>} />
+          {/* --- PUBLIC ROUTES --- */}
+          <Route path="/" element={<PublicLayout><Home /></PublicLayout>} />
+          <Route path="/profile" element={<PublicLayout><Profile /></PublicLayout>} />
           
-          {/* Chat Route (No Navbar/Footer - Full Screen) */}
+          {/* 🔥 Removed /plans route */}
+          
+          <Route path="/services" element={<PublicLayout><CustomBotService /></PublicLayout>} />
+          <Route path="/checkout" element={<PublicLayout><Checkout /></PublicLayout>} />
+          <Route path="/about" element={<PublicLayout><About /></PublicLayout>} />
+          <Route path="/privacy" element={<PublicLayout><Privacy /></PublicLayout>} />
+          <Route path="/terms" element={<PublicLayout><Terms /></PublicLayout>} />
+
+          {/* --- CHAT ROUTE --- */}
           <Route path="/chat" element={<Chat />} />
 
-          {/* =========================================
-              ADMIN PANEL ROUTES
-          ========================================= */}
-          
-          {/* 1. Admin Login (No Sidebar) */}
+          {/* --- ADMIN AUTH --- */}
           <Route path="/admin/login" element={<AdminLogin />} />
 
-          {/* 2. Admin Protected Area (With Sidebar Layout) */}
+          {/* --- ADMIN ROUTES --- */}
           <Route path="/admin" element={<AdminLayout />}>
-            {/* /admin ගිය ගමන් Dashboard එකට යනවා */}
-            <Route index element={<Dashboard />} />
-            
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="orders" element={<Orders />} />
-            <Route path="packages" element={<Packages />} />
+             <Route path="dashboard" element={<AdminDashboard />} />
+             <Route path="plans" element={<AdminPlans />} />
+             <Route path="payments" element={<AdminPayments />} />
+             <Route path="users" element={<AdminUsers />} />
+             <Route path="student-feedback" element={<StudentFeedbacks />} />
+             <Route path="testimonials" element={<ManageFeedbacks />} />
+             <Route path="ingest" element={<IngestDocs />} />
+             <Route path="admins" element={<ManageAdmins />} />
+             <Route path="knowledge" element={<KnowledgeBase />} />
           </Route>
 
         </Routes>

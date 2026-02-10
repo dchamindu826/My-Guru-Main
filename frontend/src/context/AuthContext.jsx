@@ -1,58 +1,57 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { auth, googleProvider } from "../lib/firebase";
-import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { supabase } from "../lib/supabase";
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { 
+    getAuth, 
+    onAuthStateChanged, 
+    signOut, 
+    GoogleAuthProvider, 
+    signInWithPopup 
+} from 'firebase/auth';
+import { app } from '../lib/firebase'; // Make sure this path is correct
 
 const AuthContext = createContext();
 
-export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // Google Login Function
-  const loginWithGoogle = async () => {
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const firebaseUser = result.user;
-      
-      // Check if user exists in Supabase, if not create profile
-      const { data: existingUser } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('email', firebaseUser.email)
-        .single();
-
-      if (!existingUser) {
-        await supabase.from('profiles').insert([
-          {
-            email: firebaseUser.email,
-            full_name: firebaseUser.displayName,
-            photo_url: firebaseUser.photoURL,
-            plan_type: 'free',
-            credits_left: 3
-          }
-        ]);
-      }
-    } catch (error) {
-      console.error("Login Error:", error);
-    }
-  };
-
-  const logout = () => signOut(auth);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      setLoading(false);
-    });
-    return unsubscribe;
-  }, []);
-
-  return (
-    <AuthContext.Provider value={{ user, loginWithGoogle, logout, loading }}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
-};
-
 export const useAuth = () => useContext(AuthContext);
+
+export const AuthProvider = ({ children }) => {
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const auth = getAuth(app);
+
+    // 🔥 LOGIN FUNCTION
+    const signInWithGoogle = async () => {
+        const provider = new GoogleAuthProvider();
+        try {
+            const result = await signInWithPopup(auth, provider);
+            // Login සාර්ථකයි! (Backend sync එක පස්සේ බලාගමු)
+            return result.user;
+        } catch (error) {
+            console.error("Google Sign In Error:", error);
+            throw error;
+        }
+    };
+
+    // 🔥 LOGOUT FUNCTION
+    const logout = () => signOut(auth);
+
+    // 🔥 AUTH STATE LISTENER
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            setUser(currentUser);
+            setLoading(false);
+        });
+        return unsubscribe;
+    }, [auth]);
+
+    // Values to export
+    const value = {
+        user,
+        signInWithGoogle, // ✅ මේක අනිවාර්යයෙන් තියෙන්න ඕනේ Navbar එකට
+        logout
+    };
+
+    return (
+        <AuthContext.Provider value={value}>
+            {!loading && children}
+        </AuthContext.Provider>
+    );
+};

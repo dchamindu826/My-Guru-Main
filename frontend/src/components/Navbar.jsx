@@ -1,140 +1,133 @@
 import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, X, LogIn, User } from 'lucide-react';
+import { Menu, X, LogOut, User as UserIcon, LayoutDashboard, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-// IMPORT YOUR LOGO HERE if you have it in assets folder
-// import logoImg from '../assets/logo.png'; 
+import logo from '../assets/logo.png'; 
 
 export default function Navbar() {
-  const { user, loginWithGoogle } = useAuth();
+  const { user, logout, signInWithGoogle } = useAuth(); 
   const navigate = useNavigate();
-  const location = useLocation();
-  const [isOpen, setIsOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  // Handle scroll effect for navbar background
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 50);
+    const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const navLinks = [
-    { name: "Home", path: "/", id: "hero" },
-    { name: "Plans", path: "/", id: "pricing" },
-    { name: "About Us", path: "/", id: "demo" }, // Changed to demo section for 'About'
-  ];
+  const handleLogout = async () => {
+    try { await logout(); navigate('/'); } catch (error) { console.error("Logout Error:", error); }
+  };
 
-  const handleNavClick = (path, id) => {
-    setIsOpen(false);
-    if (location.pathname === path && id) {
-        // If already on home page, just scroll
-        const element = document.getElementById(id);
-        if (element) element.scrollIntoView({ behavior: 'smooth' });
-    } else {
-        // Navigate first (you might need extra logic to scroll after nav)
-        navigate(path);
+  const handleGoogleLogin = async () => {
+      try {
+          await signInWithGoogle();
+          setIsMobileMenuOpen(false);
+      } catch (error) {
+          console.error("Login Failed", error);
+      }
+  };
+
+  const renderProfileImage = (size = "w-10 h-10", fontSize = "text-lg") => {
+    if (user?.photoURL) {
+      return <img src={user.photoURL} alt="Profile" className={`${size} rounded-full object-cover border-2 border-amber-500/50`} referrerPolicy="no-referrer" />;
     }
+    return <div className={`${size} rounded-full bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-black font-bold ${fontSize} border-2 border-white/10`}>{user?.email?.charAt(0).toUpperCase()}</div>;
   };
 
   return (
-    <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${
-        scrolled ? 'bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 py-3' : 'bg-transparent py-5'
-    }`}>
+    <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-[#050505]/80 backdrop-blur-md border-b border-white/5 py-3' : 'bg-transparent py-5'}`}>
       <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
         
-        {/* LOGO & ANIMATED NAME */}
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
-          {/* REPLACE src below with your actual logo import eg: src={logoImg} */}
-          <img src="https://via.placeholder.com/40?text=MG" alt="My Guru Logo" className="w-10 h-10 rounded-xl" />
-          
-          <motion.div 
-             animate={{ 
-                 scale: [1, 1.02, 1],
-                 textShadow: ["0 0 0px #fbbf24", "0 0 10px #fbbf24", "0 0 0px #fbbf24"]
-             }}
-             transition={{ duration: 2, repeat: Infinity }}
-             className="flex flex-col"
-          >
-            <span className="text-2xl font-black text-white tracking-tight leading-none">
-                My Guru
-            </span>
-            <span className="text-[10px] text-amber-500 font-bold tracking-[0.2em] uppercase"></span>
-          </motion.div>
-        </div>
+        <Link to="/" className="flex items-center gap-3 group">
+          <img src={logo} alt="MyGuru" className="w-10 h-10 object-contain group-hover:scale-105 transition-transform duration-300" />
+          <span className="text-2xl font-black text-white tracking-tight">My <span className="text-amber-500">Guru</span></span>
+        </Link>
 
-        {/* DESKTOP MENU */}
+        {/* DESKTOP */}
         <div className="hidden md:flex items-center gap-8">
-            {navLinks.map((link) => (
-                <button 
-                    key={link.name} 
-                    onClick={() => handleNavClick(link.path, link.id)} 
-                    className="text-sm font-bold text-gray-300 hover:text-amber-500 transition uppercase tracking-wider"
-                >
-                    {link.name}
+          <div className="flex items-center gap-6 text-sm font-medium text-gray-300">
+            <Link to="/" className="hover:text-amber-500 transition">Home</Link>
+            {/* 🔥 Plans Link REMOVED */}
+            <Link to="/services" className="hover:text-amber-500 transition">Services</Link>
+            <Link to="/about" className="hover:text-amber-500 transition">About Us</Link>
+          </div>
+
+          {user ? (
+            <div className="flex items-center gap-4">
+              <Link to="/chat" className="px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm transition flex items-center gap-2 shadow-lg hover:scale-105">
+                <MessageCircle size={18} /> Chat with Guru
+              </Link>
+              <div className="relative">
+                <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="focus:outline-none transition-transform hover:scale-105">
+                  {renderProfileImage()}
                 </button>
-            ))}
-            
-            {user ? (
-                <button onClick={() => navigate('/profile')} className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full transition border border-white/10">
-                    <img src={user.photoURL} alt="User" className="w-7 h-7 rounded-full" />
-                    <span className="text-sm font-bold text-white">Profile</span>
-                </button>
-            ) : (
-                <button 
-                    onClick={loginWithGoogle}
-                    className="bg-gradient-to-r from-amber-500 to-yellow-600 text-black px-6 py-2.5 rounded-full font-bold text-sm hover:scale-105 transition flex items-center gap-2 shadow-lg shadow-amber-500/20"
-                >
-                    <LogIn size={16} /> Login
-                </button>
-            )}
+                <AnimatePresence>
+                  {isProfileOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsProfileOpen(false)}></div>
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute right-0 mt-3 w-60 bg-[#111] border border-white/10 rounded-xl shadow-2xl p-2 z-50">
+                        <div className="px-4 py-3 border-b border-white/10 mb-2">
+                          <p className="text-sm font-bold text-white truncate">{user.displayName || 'Student'}</p>
+                          <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                        </div>
+                        <Link to="/profile" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/5 hover:text-white transition"><UserIcon size={16} /> My Profile</Link>
+                        {user.email === 'admin@codeaura.com' && <Link to="/admin/dashboard" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/5 hover:text-white transition"><LayoutDashboard size={16} /> Admin Panel</Link>}
+                        <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition mt-1"><LogOut size={16} /> Logout</button>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          ) : (
+            <button 
+                onClick={handleGoogleLogin} 
+                className="px-6 py-2.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 text-black font-bold text-sm hover:shadow-lg hover:shadow-amber-500/20 transition hover:scale-105"
+            >
+                Get Started
+            </button>
+          )}
         </div>
 
-        {/* MOBILE MENU BUTTON */}
-        <button onClick={() => setIsOpen(!isOpen)} className="md:hidden text-white p-2 rounded-lg hover:bg-white/10 transition">
-            {isOpen ? <X size={28} className="text-amber-500" /> : <Menu size={28} />}
+        {/* MOBILE TOGGLE */}
+        <button className="md:hidden text-white" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+          {isMobileMenuOpen ? <X size={28} /> : <Menu size={28} />}
         </button>
       </div>
 
-      {/* NEW CLEAN MOBILE MENU OVERLAY */}
+      {/* MOBILE MENU */}
       <AnimatePresence>
-        {isOpen && (
-            <motion.div 
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.2 }}
-                className="md:hidden absolute top-full left-0 w-full bg-[#0A0A0A] border-b border-white/10 shadow-2xl"
-            >
-                <div className="px-6 py-8 space-y-6 flex flex-col items-center text-center">
-                    {navLinks.map((link) => (
-                        <button 
-                            key={link.name} 
-                            onClick={() => handleNavClick(link.path, link.id)} 
-                            className="text-2xl font-bold text-white hover:text-amber-500 transition"
-                        >
-                            {link.name}
-                        </button>
-                    ))}
-                    
-                    <div className="w-24 h-[1px] bg-white/10 my-4"></div>
-
-                    {user ? (
-                        <button onClick={() => { handleNavClick('/profile'); }} className="flex flex-col items-center gap-3">
-                            <img src={user.photoURL} alt="User" className="w-16 h-16 rounded-full border-2 border-amber-500" />
-                            <div>
-                                <p className="font-bold text-xl text-white">{user.displayName}</p>
-                                <p className="text-sm text-amber-500">View Dashboard</p>
-                            </div>
-                        </button>
-                    ) : (
-                        <button onClick={() => { loginWithGoogle(); setIsOpen(false); }} className="w-full max-w-xs bg-amber-500 text-black py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2">
-                            <LogIn size={20} /> Login with Google
-                        </button>
-                    )}
+        {isMobileMenuOpen && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="md:hidden bg-[#0A0A0A] border-b border-white/10 overflow-hidden">
+            <div className="px-6 py-8 space-y-6">
+              <Link to="/" className="block text-lg font-medium text-gray-300" onClick={() => setIsMobileMenuOpen(false)}>Home</Link>
+              {/* 🔥 Plans Link REMOVED in Mobile too */}
+              <Link to="/services" className="block text-lg font-medium text-gray-300" onClick={() => setIsMobileMenuOpen(false)}>Services</Link>
+              
+              {user ? (
+                <div className="pt-6 border-t border-white/10">
+                  <div className="flex items-center gap-4 mb-6">
+                    {renderProfileImage("w-12 h-12")}
+                    <div>
+                      <p className="font-bold text-white">{user.displayName || 'Student'}</p>
+                      <p className="text-sm text-gray-500">{user.email}</p>
+                    </div>
+                  </div>
+                  <Link to="/chat" className="block w-full py-3 bg-blue-600 rounded-xl text-center font-bold text-white mb-3" onClick={() => setIsMobileMenuOpen(false)}>Chat with Guru</Link>
+                  <Link to="/profile" className="block w-full py-3 bg-white/5 rounded-xl text-center font-bold text-white mb-3" onClick={() => setIsMobileMenuOpen(false)}>My Profile</Link>
+                  <button onClick={handleLogout} className="block w-full py-3 bg-red-500/10 rounded-xl text-center font-bold text-red-500">Logout</button>
                 </div>
-            </motion.div>
+              ) : (
+                <div className="pt-6 border-t border-white/10">
+                  <button onClick={() => { handleGoogleLogin(); setIsMobileMenuOpen(false); }} className="w-full py-3 rounded-xl bg-amber-500 text-center font-bold text-black">Get Started</button>
+                </div>
+              )}
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </nav>

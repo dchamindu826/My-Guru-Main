@@ -1,9 +1,8 @@
 import axios from 'axios';
 
-// ඔයාගේ VPS IP එක හෝ Domain එක මෙතනට දාන්න
-// Localhost නම්: http://localhost:8095
-// VPS නම්: https://myguru.lumi-automation.com/api (Nginx හරහා)
-const API_URL = 'https://myguru.lumi-automation.com/api/admin'; 
+// Node.js Backend URL එක (Localhost)
+// අගට /admin කෑල්ල අයින් කළා, මොකද අපි පොදු /api එකක් පාවිච්චි කරන්නේ.
+const API_URL = 'http://localhost:5000/api'; 
 
 export const api = axios.create({
   baseURL: API_URL,

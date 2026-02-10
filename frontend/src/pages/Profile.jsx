@@ -1,16 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, History, MessageCircle, Clock, CheckCircle, XCircle, Loader, User, AlertTriangle } from 'lucide-react';
+import { LogOut, History, Clock, CheckCircle, XCircle, Loader, MessageCircle, Zap, Star, Crown } from 'lucide-react';
+
+// Package details helper
+const getPackageDetails = (name) => {
+    const n = name?.toLowerCase() || '';
+    if (n.includes('genius')) return { icon: <Crown size={18} className="text-amber-500"/>, credits: 'Unlimited', features: ['All Subjects', 'Teacher Support'], color: 'text-amber-500' };
+    if (n.includes('scholar')) return { icon: <Star size={18} className="text-blue-400"/>, credits: '100/Day', features: ['All Subjects', 'Priority Support'], color: 'text-blue-400' };
+    return { icon: <Zap size={18} className="text-gray-400"/>, credits: '3/Day', features: ['Basic Access'], color: 'text-gray-400' };
+};
 
 export default function Profile() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  
-  const [profileData, setProfileData] = useState(null);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userStats, setUserStats] = useState({ credits: 3, plan: 'Free Plan' }); 
 
   useEffect(() => {
     if (!user) return;
@@ -18,36 +25,30 @@ export default function Profile() {
     const fetchData = async () => {
       try {
         setLoading(true);
+        // FIX: Use uid consistently
+        const userId = user.uid || user.id; 
+        
+        // 1. Get Payment History
+        const resOrders = await api.get(`/payments/user/${userId}`);
+        setOrders(resOrders.data);
 
-        // FIX 1: Email එක වෙනුවට ID එකෙන් Profile එක ගන්න (406 Error Fix)
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id) 
-          .single();
-
-        if (profileError) {
-            console.warn("Profile fetch warning:", profileError);
+        // 2. Calculate Current Plan based on approved orders
+        // Sort by date (newest first) to get latest plan
+        const sortedOrders = resOrders.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const approvedOrder = sortedOrders.find(o => o.status === 'approved');
+        
+        if(approvedOrder) {
+            setUserStats({ 
+                plan: approvedOrder.package_name, 
+                credits: getPackageDetails(approvedOrder.package_name).credits 
+            });
         }
-        setProfileData(profile);
-
-        // FIX 2: Orders ගන්නකොටත් user_id එකෙන් ගන්න
-        const { data: payments, error: paymentError } = await supabase
-          .from('payments')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (paymentError) console.error("Payment Error:", paymentError);
-        setOrders(payments || []);
-
       } catch (error) {
-        console.error("Critical Error:", error);
+        console.error("Profile Load Error:", error);
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [user]);
 
@@ -56,96 +57,157 @@ export default function Profile() {
     navigate('/');
   };
 
-  if (loading) {
-    return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-amber-500"><Loader className="animate-spin" size={40}/></div>;
-  }
+  // Helper to render Profile Image
+  const renderProfileImage = () => {
+      if (user?.photoURL) {
+          return (
+              <img 
+                  src={user.photoURL} 
+                  alt="Profile" 
+                  className="w-20 h-20 rounded-full border-4 border-[#111] shadow-xl object-cover"
+              />
+          );
+      }
+      return (
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-black font-black text-3xl shadow-lg border-4 border-[#111]">
+              {user?.email?.charAt(0).toUpperCase()}
+          </div>
+      );
+  };
 
-  // FIX 3: Broken Image Link Fix
-  const profileImage = user?.photoURL || `https://ui-avatars.com/api/?name=${user?.email?.substring(0, 2)}&background=F59E0B&color=fff`;
+  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-amber-500"><Loader className="animate-spin" size={40}/></div>;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-6 pt-24">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="min-h-screen bg-[#050505] text-white font-sans">
+      
+      {/* FIX: Added `pt-28` (Padding Top) and `pb-10` to clear the fixed Navbar. 
+          Also added a container with max-width to center content.
+      */}
+      <div className="max-w-5xl mx-auto px-4 md:px-8 pt-28 pb-10 space-y-8">
         
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-center bg-[#111] p-6 rounded-2xl border border-white/10 gap-4">
-            <div className="flex items-center gap-4 w-full md:w-auto">
-                <img 
-                  src={profileImage} 
-                  alt="Profile" 
-                  className="w-14 h-14 md:w-16 md:h-16 rounded-full border-2 border-amber-500 object-cover" 
-                />
+        {/* TOP CARD: USER INFO */}
+        <div className="bg-gradient-to-r from-[#111] to-[#151515] p-8 rounded-3xl border border-white/10 flex flex-col md:flex-row justify-between items-center gap-6 shadow-2xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 blur-[100px] rounded-full pointer-events-none group-hover:bg-amber-500/10 transition duration-700"></div>
+            
+            <div className="flex flex-col md:flex-row items-center gap-6 z-10 text-center md:text-left">
+                {renderProfileImage()}
+                
                 <div>
-                    <h1 className="text-xl md:text-2xl font-bold">{profileData?.full_name || user?.displayName || 'Student'}</h1>
-                    <p className="text-gray-400 text-xs md:text-sm">{user?.email}</p>
-                </div>
-            </div>
-            <button onClick={handleLogout} className="w-full md:w-auto flex items-center justify-center gap-2 bg-red-500/10 text-red-400 px-5 py-2 rounded-xl hover:bg-red-500/20 transition text-sm font-bold">
-                <LogOut size={18} /> Logout
-            </button>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-[#111] p-6 rounded-2xl border border-white/5 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition"><User size={60} /></div>
-                <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-2">Current Plan</p>
-                <h3 className="text-2xl md:text-3xl font-bold text-amber-500 capitalize">{profileData?.plan_type || 'Free'}</h3>
-            </div>
-
-            <div className="bg-[#111] p-6 rounded-2xl border border-white/5">
-                <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-2">Daily Credits</p>
-                <div className="flex items-end gap-2">
-                    <h3 className="text-3xl font-bold text-white">{profileData?.daily_credits_limit || 3}</h3>
-                    <span className="text-gray-500 text-sm mb-1">Total Limit</span>
-                </div>
-                <div className="w-full bg-gray-800 h-1.5 rounded-full mt-4"><div className="bg-blue-500 h-full w-full"></div></div>
-            </div>
-
-            <a href="https://wa.me/94701234567" target="_blank" rel="noreferrer" className="bg-[#111] p-6 rounded-2xl border border-white/5 hover:border-green-500/50 transition cursor-pointer flex flex-col justify-center items-center text-center">
-                <div className="w-12 h-12 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-3"><MessageCircle size={24} /></div>
-                <h3 className="font-bold text-white">WhatsApp Support</h3>
-            </a>
-        </div>
-
-        {/* Order History */}
-        <div className="bg-[#111] rounded-2xl border border-white/10 overflow-hidden">
-            <div className="p-6 border-b border-white/10 flex items-center gap-2">
-                <History className="text-amber-500" size={20} />
-                <h2 className="text-lg font-bold">Payment History</h2>
-            </div>
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead className="bg-white/5 text-gray-400 text-[10px] uppercase tracking-wider">
-                        <tr>
-                            <th className="p-4">Date</th>
-                            <th className="p-4">Plan</th>
-                            <th className="p-4">Amount</th>
-                            <th className="p-4">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5 text-sm">
-                        {orders.length > 0 ? orders.map((order) => (
-                            <tr key={order.id} className="hover:bg-white/5 transition">
-                                <td className="p-4 text-gray-300">
-                                    {new Date(order.created_at).toLocaleDateString()}
-                                </td>
-                                <td className="p-4 font-bold text-white capitalize">{order.package_name || 'Standard'}</td>
-                                <td className="p-4 text-gray-300 font-mono">Rs. {order.amount}</td>
-                                <td className="p-4">
-                                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 w-fit
-                                        ${order.status === 'approved' ? 'bg-green-500/20 text-green-400' : 
-                                          order.status === 'rejected' ? 'bg-red-500/20 text-red-400' : 
-                                          'bg-yellow-500/20 text-yellow-400'}`}>
-                                        {order.status}
-                                    </span>
-                                </td>
-                            </tr>
-                        )) : (
-                            <tr><td colSpan="4" className="p-8 text-center text-gray-500">No payment history found.</td></tr>
+                    <h1 className="text-3xl font-black text-white flex items-center justify-center md:justify-start gap-2">
+                        {user?.displayName || 'Student'}
+                        {userStats.plan !== 'Free Plan' && (
+                            <span className="bg-amber-500 text-black text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">PRO</span>
                         )}
-                    </tbody>
-                </table>
+                    </h1>
+                    <p className="text-gray-400 text-sm font-medium">{user?.email}</p>
+                    
+                    <div className={`mt-3 inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-wide ${
+                        userStats.plan.toLowerCase().includes('genius') ? 'text-amber-500 border-amber-500/30' : 
+                        userStats.plan.toLowerCase().includes('scholar') ? 'text-blue-400 border-blue-400/30' : 'text-gray-400'
+                    }`}>
+                        {userStats.plan.toLowerCase().includes('genius') && <Crown size={14} fill="currentColor"/>}
+                        {userStats.plan.toLowerCase().includes('scholar') && <Star size={14} fill="currentColor"/>}
+                        {userStats.plan}
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex gap-3 z-10 w-full md:w-auto">
+                <button onClick={handleLogout} className="w-full md:w-auto py-3 px-6 rounded-xl bg-[#222] hover:bg-[#333] border border-white/5 hover:border-white/20 text-white text-sm font-bold flex items-center justify-center gap-2 transition shadow-lg">
+                    <LogOut size={18} /> Logout
+                </button>
+            </div>
+        </div>
+
+        {/* STATS ROW */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-[#111] p-6 rounded-2xl border border-white/10 flex flex-col justify-between hover:border-amber-500/20 transition group">
+                <div className="flex justify-between items-start">
+                    <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Available Credits</p>
+                    <Zap className="text-amber-500 group-hover:scale-110 transition" size={20} fill="currentColor"/>
+                </div>
+                <p className="text-4xl font-black text-white mt-2">{userStats.credits}</p>
+            </div>
+
+            <div className="bg-[#111] p-6 rounded-2xl border border-white/10 flex flex-col justify-between hover:border-blue-500/20 transition group">
+                <div className="flex justify-between items-start">
+                    <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Total Orders</p>
+                    <History className="text-blue-500 group-hover:scale-110 transition" size={20}/>
+                </div>
+                <p className="text-4xl font-black text-white mt-2">{orders.length}</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-green-900/20 to-black p-6 rounded-2xl border border-green-500/20 flex flex-col justify-center items-start relative overflow-hidden">
+                <div className="absolute right-[-10px] top-[-10px] w-20 h-20 bg-green-500/20 blur-2xl rounded-full"></div>
+                <p className="text-green-500 text-xs font-bold uppercase mb-3 relative z-10">Need Assistance?</p>
+                <a 
+                    href="https://wa.me/94701234567?text=Hello MyGuru Admin, I have an issue with my account." 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-lg shadow-green-900/20 relative z-10"
+                >
+                    <MessageCircle size={18} /> Chat on WhatsApp
+                </a>
+            </div>
+        </div>
+
+        {/* ORDER HISTORY */}
+        <div>
+            <h2 className="text-xl font-bold mb-5 flex items-center gap-2 text-white/90">
+                <History className="text-amber-500"/> Payment History
+            </h2>
+            
+            <div className="space-y-4">
+                {orders.length > 0 ? orders.map((order) => {
+                    const details = getPackageDetails(order.package_name);
+                    return (
+                        <div key={order.id || order._id} className="bg-[#111] border border-white/10 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4 hover:border-white/20 transition group">
+                            
+                            {/* Left: Info */}
+                            <div className="flex items-center gap-4 w-full md:w-auto">
+                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-[#1a1a1a] border border-white/5 group-hover:scale-105 transition`}>
+                                    {details.icon}
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-lg text-white">{order.package_name}</h3>
+                                    <p className="text-gray-500 text-xs font-mono mt-0.5">{new Date(order.created_at).toLocaleDateString()} • Rs. {order.amount}</p>
+                                </div>
+                            </div>
+
+                            {/* Middle: Features (Only if approved) */}
+                            {order.status === 'approved' && (
+                                <div className="hidden md:flex gap-2">
+                                    {details.features.map((f, i) => (
+                                        <span key={i} className="text-[10px] bg-white/5 px-2.5 py-1 rounded-md border border-white/10 text-gray-400">{f}</span>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Right: Status */}
+                            <div className="w-full md:w-auto flex justify-between md:justify-end items-center gap-4">
+                                <span className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 border
+                                    ${order.status === 'approved' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
+                                      order.status === 'rejected' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 
+                                      'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'}`}>
+                                    {order.status === 'approved' && <CheckCircle size={14}/>}
+                                    {order.status === 'rejected' && <XCircle size={14}/>}
+                                    {order.status === 'pending' && <Clock size={14}/>}
+                                    {order.status}
+                                </span>
+                            </div>
+                        </div>
+                    );
+                }) : (
+                    <div className="py-16 text-center bg-[#111] rounded-3xl border border-white/5 border-dashed">
+                        <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-600">
+                            <Clock size={32}/>
+                        </div>
+                        <p className="text-gray-500 font-medium">No payment history found.</p>
+                        <button onClick={() => navigate('/plans')} className="mt-4 text-amber-500 text-sm font-bold hover:underline">
+                            View Plans & Pricing
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
 

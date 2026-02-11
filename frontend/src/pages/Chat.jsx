@@ -86,38 +86,59 @@ export default function Chat() {
     e.preventDefault();
     if (!input.trim()) return;
 
+    // Check Credits (Free Plan Only)
     if (userPlan === 'free' && credits <= 0) {
         setMessages(prev => [...prev, { id: Date.now(), role: 'ai', content: "🛑 අද දවසේ ප්‍රශ්න ප්‍රමාණය ඉවරයි.\nUnlimited Plan එක Upgrade කරන්න.", isSystem: true }]);
         return;
     }
 
+    // User Message එක UI එකට දානවා
     const userMsg = { id: Date.now(), role: 'user', content: input, timestamp: new Date() };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setIsTyping(true);
 
     try {
-        const res = await fetch("https://myguru.lumi-automation.com/chat", {
+        // 🔥 NEW: Python Brain API Request
+        const res = await fetch("https://myguru.lumi-automation.com/brain/chat", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+                "Content-Type": "application/json",
+                "x-api-key": "sk_7MYoNP9bT6l_aUKh8svMJEMFTY0vY7uv" // 🔑 ඔයාගේ අලුත් Key එක
+            },
             body: JSON.stringify({
-                user_id: user.uid || user.id, // 🔥 Use correct ID
-                message: userMsg.content,
+                question: userMsg.content, // Python API expects "question"
                 subject: selectedSubject,
-                grade: selectedGrade,
                 medium: selectedMedium
             })
         });
+
         const data = await res.json();
 
-        if (data.status === "no_credits") {
-            setMessages(prev => [...prev, { id: Date.now(), role: 'ai', content: data.answer || "පැකේජ් එක ඉවරයි.", isSystem: true }]);
-        } else {
-            setMessages(prev => [...prev, { id: Date.now() + 1, role: 'ai', content: data.answer, image: data.image_url, timestamp: new Date() }]);
-            if (data.credits_left !== undefined && userPlan === 'free') setCredits(data.credits_left);
+        // Handle Errors (Expired Key / No Credits)
+        if (res.status !== 200) {
+             setMessages(prev => [...prev, { id: Date.now(), role: 'ai', content: data.detail || "Error connecting to Brain.", isSystem: true }]);
+             return;
         }
+
+        // Success Response
+        setMessages(prev => [...prev, { 
+            id: Date.now() + 1, 
+            role: 'ai', 
+            content: data.answer, 
+            // Python API sends image as object: { image_url: "...", ... }
+            image: data.image ? data.image.image_url : null, 
+            timestamp: new Date() 
+        }]);
+
+        // Credits අඩු කිරීම (Frontend Display Only - Backend also handles this)
+        if (data.credits_left !== undefined && data.credits_left !== "Unlimited") {
+            setCredits(data.credits_left);
+        }
+
     } catch (e) {
-        setMessages(prev => [...prev, { id: Date.now(), role: 'ai', content: "Server Error. පොඩ්ඩක් ඉඳලා ආයේ ට්‍රයි කරන්න." }]);
+        console.error(e);
+        setMessages(prev => [...prev, { id: Date.now(), role: 'ai', content: "System busy. පොඩ්ඩක් ඉඳලා ආයේ ට්‍රයි කරන්න." }]);
     } finally {
         setIsTyping(false);
     }

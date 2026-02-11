@@ -8,7 +8,9 @@ export default function Testimonials() {
 
   useEffect(() => {
     // Backend එකෙන් Feedbacks අදිනවා
-    api.get('/testimonials').then(res => setReviews(res.data));
+    api.get('/testimonials')
+      .then(res => setReviews(res.data))
+      .catch(err => console.error("Error fetching testimonials:", err));
   }, []);
 
   if(reviews.length === 0) return null;
@@ -42,10 +44,12 @@ export default function Testimonials() {
                     <p className="text-gray-300 text-lg mb-6 leading-relaxed">"{review.message}"</p>
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center font-bold text-white text-sm">
-                            {review.student_name.charAt(0)}
+                            {/* 🔥 FIX: නම නැත්නම් 'U' අකුර ගන්නවා */}
+                            {(review.student_name || "User").charAt(0)}
                         </div>
                         <div>
-                            <h4 className="font-bold text-white text-sm">{review.student_name}</h4>
+                            {/* 🔥 FIX: නම නැත්නම් 'Student' කියලා පෙන්නනවා */}
+                            <h4 className="font-bold text-white text-sm">{review.student_name || "Student"}</h4>
                             <span className="text-xs text-amber-500 font-bold uppercase">{review.role}</span>
                         </div>
                     </div>

@@ -3,13 +3,12 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { 
   Send, Menu, X, Image as ImageIcon, Bot, 
-  Zap, LogOut, Crown, Infinity, BookOpen, Trash2, GraduationCap, ChevronRight, MessageSquare, Sparkles
+  Zap, LogOut, Crown, Infinity, BookOpen, Trash2, GraduationCap, ChevronRight, MessageSquare, Sparkles, Globe, Smile
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api'; 
 import logo from '../assets/logo.png'; 
 
-// 🔥 SUBJECT THEMES
 const SUBJECT_THEMES = {
     "Science": "from-blue-600 to-cyan-500",
     "Mathematics": "from-red-600 to-orange-500",
@@ -38,37 +37,28 @@ export default function Chat() {
   const [isSidebarOpen, setSidebarOpen] = useState(true); 
   const [isTyping, setIsTyping] = useState(false);
   
-  // Stream & Session State
-  const [activeStream, setActiveStream] = useState('OL'); // 'OL' or 'AL'
+  const [activeStream, setActiveStream] = useState('OL'); 
   const [activeSubject, setActiveSubject] = useState(null); 
-  
-  // Chat History Storage
+  const [medium, setMedium] = useState("Sinhala");
+
   const [sessions, setSessions] = useState(() => {
       const saved = localStorage.getItem('myguru_sessions');
       return saved ? JSON.parse(saved) : {};
   });
 
-  // Image Upload
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const fileInputRef = useRef(null);
-  
-  // Refs
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
-  // Save Sessions to Local Storage
   useEffect(() => {
       localStorage.setItem('myguru_sessions', JSON.stringify(sessions));
   }, [sessions]);
 
-  // Current Messages
   const currentMessages = activeSubject ? (sessions[activeSubject] || []) : [];
-
-  // Theme Helper
   const activeTheme = activeSubject ? SUBJECT_THEMES[activeSubject] : "from-gray-700 to-gray-600";
 
-  // --- FETCH PLAN ---
   useEffect(() => {
     if (!user) return;
     const fetchUserPlan = async () => {
@@ -88,26 +78,26 @@ export default function Chat() {
     fetchUserPlan();
   }, [user]);
 
-  // Scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [currentMessages, isTyping, activeSubject]);
 
   // --- HANDLERS ---
-
   const handleSubjectSelect = (subject) => {
       setActiveSubject(subject);
       setSidebarOpen(false); 
       
       setSessions(prev => {
           const subjectHistory = prev[subject] || [];
+          // 🔥 Only add welcome message if history is empty
           if (subjectHistory.length === 0) {
               const firstName = user?.displayName?.split(' ')[0] || 'පුතේ';
+              
+              // 🔥 YOUR CUSTOM WELCOME MESSAGE
               const welcomeMsg = {
                   id: 'init-welcome',
                   role: 'ai',
-                  // 🔥 No Stars, Clean & Inviting Message
-                  content: `ආයුබෝවන් ${firstName}! 👋\nමම My Guru.\n\nඅද අපි ${subject} පාඩම පටන් ගමුද? 📚\n\nඔයාට තියෙන ඕනෑම ප්‍රශ්නයක් මගෙන් අහන්න. මම ලෑස්තියි ඔයාට කියලා දෙන්න! 👇\n\nසිංහල, English, Tamil හෝ Singlish වලින් ඔයාට මගෙන් ප්‍රශ්න අහන්න පුළුවන්.`,
+                  content: `ආයුබෝවන් ${firstName}! 👋\n\nමම My Guru. ලංකාවේ පළවෙනි AI ගුරුවරයා 🎓\n\nඅද අපි ${subject} පාඩම පටන් ගමු. 📚\n\nඔයාට තියෙන ඕනෑම ප්‍රශ්නයක් මගෙන් අහන්න. මම ලෑස්තියි ඔයාට සරලව කියලා දෙන්න.\n\nසිංහල, English, Tamil හෝ Singlish වලින් අහන්න.\n\nඅපි වැඩේ පටන් ගමු! 🚀`,
                   timestamp: new Date()
               };
               return { ...prev, [subject]: [welcomeMsg] };
@@ -159,19 +149,18 @@ export default function Chat() {
     setIsTyping(true);
 
     try {
-        let payload = { question: userMsg.content, subject: activeSubject, medium: "Sinhala" }; 
+        let payload = { question: userMsg.content, subject: activeSubject, medium: medium }; 
         if (imageToSend) {
             payload.image_data = await toBase64(imageToSend);
         }
 
-        const res = await fetch("https://myguru.lumi-automation.com/brain/chat", {
+        const res = await fetch("http://localhost:5002/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-api-key": "sk_7MYoNP9bT6l_aUKh8svMJEMFTY0vY7uv" },
             body: JSON.stringify(payload)
         });
 
         const data = await res.json();
-        
         if (res.status !== 200) throw new Error("API Error");
 
         addMessageToSession(activeSubject, { 
@@ -192,7 +181,7 @@ export default function Chat() {
   const addMessageToSession = (subject, msg) => {
       setSessions(prev => ({
           ...prev,
-          subject: [...(prev[subject] || []), msg]
+          [subject]: [...(prev[subject] || []), msg] 
       }));
   };
 
@@ -201,8 +190,6 @@ export default function Chat() {
       
       {/* --- SIDEBAR --- */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#090909] border-r border-white/5 flex flex-col transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        
-        {/* Logo */}
         <div className="p-6 flex items-center justify-between">
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
                 <img src={logo} alt="MyGuru" className="w-8 h-8 object-contain" />
@@ -211,50 +198,25 @@ export default function Chat() {
             <button onClick={() => setSidebarOpen(false)} className="md:hidden text-gray-400"><X size={24} /></button>
         </div>
 
-        {/* Stream Selector */}
         <div className="px-4 mb-4">
             <div className="bg-[#111] p-1 rounded-xl flex border border-white/5">
-                <button 
-                    onClick={() => setActiveStream('OL')} 
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${activeStream === 'OL' ? 'bg-amber-500 text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
-                >
-                    <GraduationCap size={14}/> O/L Stream
-                </button>
-                <button 
-                    onClick={() => setActiveStream('AL')} 
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${activeStream === 'AL' ? 'bg-amber-500 text-black' : 'text-gray-500 hover:text-white'}`}
-                >
-                    <BookOpen size={14}/> A/L Stream
-                </button>
+                <button onClick={() => setActiveStream('OL')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${activeStream === 'OL' ? 'bg-amber-500 text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}><GraduationCap size={14}/> O/L Stream</button>
+                <button onClick={() => setActiveStream('AL')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${activeStream === 'AL' ? 'bg-amber-500 text-black' : 'text-gray-500 hover:text-white'}`}><BookOpen size={14}/> A/L Stream</button>
             </div>
         </div>
 
-        {/* Subject List */}
         <div className="flex-1 overflow-y-auto px-4 custom-scrollbar">
             {activeStream === 'OL' ? (
                 <div className="space-y-1">
                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 px-2">Subjects</p>
                     {Object.keys(SUBJECT_THEMES).map(subject => (
                         <div key={subject} className="group relative">
-                            <button 
-                                onClick={() => handleSubjectSelect(subject)}
-                                className={`w-full text-left px-3 py-3 rounded-xl text-sm font-medium transition flex items-center gap-3 border ${
-                                    activeSubject === subject 
-                                    ? `bg-gradient-to-r ${SUBJECT_THEMES[subject]} border-transparent text-white shadow-lg` 
-                                    : 'bg-transparent border-transparent text-gray-400 hover:bg-white/5 hover:text-gray-200'
-                                }`}
-                            >
+                            <button onClick={() => handleSubjectSelect(subject)} className={`w-full text-left px-3 py-3 rounded-xl text-sm font-medium transition flex items-center gap-3 border ${activeSubject === subject ? `bg-gradient-to-r ${SUBJECT_THEMES[subject]} border-transparent text-white shadow-lg` : 'bg-transparent border-transparent text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}>
                                 {activeSubject === subject ? <MessageSquare size={16} fill="currentColor"/> : <div className={`w-2 h-2 rounded-full bg-gradient-to-r ${SUBJECT_THEMES[subject]}`}></div>}
                                 {subject}
                             </button>
                             {(sessions[subject]?.length > 0) && (
-                                <button 
-                                    onClick={(e) => handleClearSession(e, subject)}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-500 hover:text-red-400 hover:bg-black/50 rounded-lg opacity-0 group-hover:opacity-100 transition"
-                                    title="Clear Chat History"
-                                >
-                                    <Trash2 size={14}/>
-                                </button>
+                                <button onClick={(e) => handleClearSession(e, subject)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-500 hover:text-red-400 hover:bg-black/50 rounded-lg opacity-0 group-hover:opacity-100 transition" title="Clear Chat History"><Trash2 size={14}/></button>
                             )}
                         </div>
                     ))}
@@ -268,7 +230,6 @@ export default function Chat() {
             )}
         </div>
 
-        {/* User Profile */}
         <div className="p-4 bg-[#0A0A0A] border-t border-white/5">
             <div className="flex items-center gap-3 mb-4">
                 <div className="relative">
@@ -281,13 +242,11 @@ export default function Chat() {
                 </div>
             </div>
             {isUnlimited ? (
-                <div className="mb-3 bg-gradient-to-r from-amber-500/20 to-yellow-600/20 rounded-xl p-3 border border-amber-500/30 flex items-center gap-2 justify-center text-amber-500 font-black text-xs tracking-wide">
-                    <Infinity size={16} /> <span>UNLIMITED ACCESS</span>
-                </div>
+                <div className="mb-3 bg-gradient-to-r from-amber-500/20 to-yellow-600/20 rounded-xl p-3 border border-amber-500/30 flex items-center gap-2 justify-center text-amber-500 font-black text-xs tracking-wide"><Infinity size={16} /> <span>UNLIMITED ACCESS</span></div>
             ) : (
                 <div className="mb-3 bg-[#111] rounded-xl p-3 border border-white/5 cursor-pointer hover:border-white/10 transition" onClick={() => navigate('/plans')}>
                     <div className="flex justify-between text-xs mb-2 text-gray-400 font-medium"><span>Daily Limit</span><span className="text-white font-bold">{credits}/3</span></div>
-                    <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"><div className="bg-amber-500 h-full" style={{ width: `${(credits/3)*100}%` }}></div></div>
+                    <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min((credits/3)*100, 100)}%` }} className="bg-amber-500 h-full"/></div>
                     <p className="text-[10px] text-amber-500 mt-2.5 text-center font-bold flex items-center justify-center gap-1">Upgrade <Zap size={10} /></p>
                 </div>
             )}
@@ -303,12 +262,25 @@ export default function Chat() {
             <div className="flex items-center gap-3">
                 <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 bg-[#111] rounded-lg text-gray-400"><Menu size={20}/></button>
                 {activeSubject ? (
-                    <div className="flex flex-col">
+                    <div className="flex flex-col md:flex-row items-start md:items-center gap-3">
                         <div className={`px-4 py-2 rounded-2xl bg-gradient-to-r ${activeTheme} shadow-lg shadow-${activeTheme.split('-')[1]}/20 flex items-center gap-3 transform transition-all hover:scale-105`}>
                             <span className="text-lg md:text-xl font-black text-white tracking-wide flex items-center gap-2">
                                 <Sparkles size={18} className="text-white/80"/> {activeSubject}
                             </span>
                             <span className="bg-black/20 backdrop-blur-md text-white text-[10px] font-bold px-2 py-0.5 rounded border border-white/20">O/L</span>
+                        </div>
+
+                        {/* Medium Selector */}
+                        <div className="bg-[#111]/80 backdrop-blur-md border border-white/10 p-1 rounded-xl flex gap-1">
+                            {['Sinhala', 'English', 'Tamil'].map((m) => (
+                                <button 
+                                    key={m}
+                                    onClick={() => setMedium(m)}
+                                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all ${medium === m ? 'bg-white text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    {m}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 ) : (
@@ -320,70 +292,64 @@ export default function Chat() {
         {/* Content Area */}
         {!activeSubject ? (
             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-                <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-purple-600 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-blue-500/20">
-                    <Bot size={40} className="text-white"/>
-                </div>
-                <h1 className="text-3xl md:text-4xl font-black text-white mb-4">
-                    ආයුබෝවන් <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">{user?.displayName?.split(' ')[0] || 'පුතේ'}!</span> 👋
-                </h1>
-                <p className="text-gray-400 max-w-md mb-8 leading-relaxed">
-                    මම ලංකාවේ පළවෙනි AI ගුරුවරයා. පටන් ගන්න පහත පියවර අනුගමනය කරන්න.
-                </p>
-
+                <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-purple-600 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-blue-500/20"><Bot size={40} className="text-white"/></div>
+                <h1 className="text-3xl md:text-4xl font-black text-white mb-4">ආයුබෝවන් <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">{user?.displayName?.split(' ')[0] || 'පුතේ'}!</span> 👋</h1>
+                <p className="text-gray-400 max-w-md mb-8 leading-relaxed">මම ලංකාවේ පළවෙනි AI ගුරුවරයා. පටන් ගන්න පහත පියවර අනුගමනය කරන්න.</p>
+                
+                {/* 🔥 REDESIGNED INSTRUCTION GUIDE */}
                 <div className="grid gap-4 max-w-md w-full text-left">
-                    <div className="bg-[#111] p-4 rounded-2xl border border-white/5 flex items-center gap-4 group hover:border-amber-500/30 transition">
-                        <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 font-bold group-hover:scale-110 transition">1</div>
+                    <div className="bg-[#111] p-4 rounded-2xl border border-white/5 flex items-center gap-4 group hover:border-amber-500/30 transition cursor-pointer" onClick={() => setSidebarOpen(true)}>
+                        <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 font-bold text-lg group-hover:scale-110 transition">1</div>
                         <div>
-                            <h3 className="font-bold text-white text-sm">Stream එක තෝරන්න</h3>
-                            <p className="text-xs text-gray-500">වම් පැත්තේ ඇති මෙනුවෙන් O/L තෝරන්න.</p>
+                            <h3 className="font-bold text-white text-sm flex items-center gap-2">Stream එක තෝරන්න <ChevronRight size={14} className="opacity-50"/></h3>
+                            <p className="text-xs text-gray-500 mt-0.5">වම් පැත්තේ ඇති මෙනුවෙන් O/L තෝරන්න.</p>
                         </div>
                     </div>
-                    <div className="bg-[#111] p-4 rounded-2xl border border-white/5 flex items-center gap-4 group hover:border-blue-500/30 transition">
-                        <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 font-bold group-hover:scale-110 transition">2</div>
+                    
+                    <div className="bg-[#111] p-4 rounded-2xl border border-white/5 flex items-center gap-4 group hover:border-blue-500/30 transition cursor-pointer" onClick={() => setSidebarOpen(true)}>
+                        <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 font-bold text-lg group-hover:scale-110 transition">2</div>
                         <div>
-                            <h3 className="font-bold text-white text-sm">විෂය (Subject) තෝරන්න</h3>
-                            <p className="text-xs text-gray-500">ඔයාට ප්‍රශ්න අහන්න ඕන විෂය click කරන්න.</p>
+                            <h3 className="font-bold text-white text-sm flex items-center gap-2">විෂය (Subject) තෝරන්න <ChevronRight size={14} className="opacity-50"/></h3>
+                            <p className="text-xs text-gray-500 mt-0.5">ඔයාට ප්‍රශ්න අහන්න ඕන විෂය click කරන්න.</p>
                         </div>
-                        <ChevronRight className="ml-auto text-gray-600"/>
                     </div>
+
                     <div className="bg-[#111] p-4 rounded-2xl border border-white/5 flex items-center gap-4 group hover:border-green-500/30 transition">
-                        <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center text-green-500 font-bold group-hover:scale-110 transition">3</div>
+                        <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center text-green-500 font-bold text-lg group-hover:scale-110 transition">3</div>
                         <div>
-                            <h3 className="font-bold text-white text-sm">ප්‍රශ්නය අහන්න</h3>
-                            <p className="text-xs text-gray-500">Chat එක ඕපන් වුනාම ඕනෑම දෙයක් අහන්න.</p>
+                            <h3 className="font-bold text-white text-sm">ප්‍රශ්නය අහන්න!</h3>
+                            <p className="text-xs text-gray-500 mt-0.5">Sinhala, English, Tamil හෝ Singlish වලින් අහන්න.</p>
                         </div>
                     </div>
                 </div>
             </div>
         ) : (
             <>
-                <div className="flex-1 overflow-y-auto px-4 pt-24 pb-40 md:px-32 lg:px-48 space-y-6 custom-scrollbar">
-                    {currentMessages.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-gray-600 opacity-50">
-                            <Bot size={48} className="mb-4"/>
-                            <p>Loading your tutor...</p>
-                        </div>
-                    ) : (
-                        currentMessages.map((msg) => (
-                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${msg.role === 'ai' ? `bg-[#111] border-white/10 text-white` : 'bg-transparent border-transparent'}`}>
-                                    {msg.role === 'ai' ? 
-                                        <div className={`w-full h-full rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center`}><Bot size={16} /></div> 
-                                        : user?.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full" /> : <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">{(user?.email || "U").charAt(0).toUpperCase()}</div>
-                                    }
-                                </div>
-                                <div className={`max-w-[85%] px-5 py-3.5 rounded-2xl text-[15px] leading-7 shadow-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-[#212121] text-white rounded-tr-sm' : 'bg-[#111] border border-white/5 text-gray-200 rounded-tl-sm'}`}>
-                                    {msg.content}
-                                    {msg.image && <img src={msg.image} className="mt-3 rounded-xl w-full border border-white/10 shadow-lg" />}
-                                </div>
-                            </motion.div>
-                        ))
+                <div className="flex-1 overflow-y-auto px-4 pt-24 pb-48 md:px-32 lg:px-48 space-y-6 custom-scrollbar">
+                    {currentMessages.map((msg) => (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${msg.role === 'ai' ? `bg-[#111] border-white/10 text-white` : 'bg-transparent border-transparent'}`}>
+                                {msg.role === 'ai' ? <div className={`w-full h-full rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center`}><Bot size={16} /></div> : user?.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full" /> : <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">{(user?.email || "U").charAt(0).toUpperCase()}</div>}
+                            </div>
+                            <div className={`max-w-[85%] px-5 py-3.5 rounded-2xl text-[15px] leading-7 shadow-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-[#212121] text-white rounded-tr-sm' : 'bg-[#111] border border-white/5 text-gray-200 rounded-tl-sm'}`}>
+                                {msg.content}
+                                {msg.image && <img src={msg.image} className="mt-3 rounded-xl w-full border border-white/10 shadow-lg" />}
+                            </div>
+                        </motion.div>
+                    ))}
+                    {isTyping && (
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
+                             <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center`}><Bot size={16} className="text-white"/></div>
+                             <div className="bg-[#111] border border-white/5 px-5 py-4 rounded-2xl rounded-tl-sm flex items-center gap-1.5">
+                                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+                                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                             </div>
+                        </motion.div>
                     )}
-                    {isTyping && <div className="text-xs text-gray-600 ml-14 animate-pulse flex items-center gap-1">Thinking...</div>}
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* Input Area */}
                 <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-black via-black to-transparent z-20">
                     <div className="max-w-3xl mx-auto">
                         {imagePreview && (
@@ -395,15 +361,13 @@ export default function Chat() {
                         <div className="relative flex items-end gap-2 p-1.5 bg-[#111] border border-white/10 rounded-[24px] shadow-2xl transition-all focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)]">
                             <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
                             <button onClick={() => fileInputRef.current?.click()} className="p-3 mb-0.5 rounded-full text-gray-400 hover:text-white hover:bg-white/5 transition"><ImageIcon size={20} /></button>
-                            <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }} placeholder={`Ask anything about ${activeSubject}...`} className="w-full bg-transparent resize-none focus:outline-none py-3.5 px-2 text-[15px] text-white placeholder-gray-600 max-h-32 custom-scrollbar" rows={1} style={{ minHeight: '50px' }} />
+                            <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }} placeholder={`Ask anything in ${medium}...`} className="w-full bg-transparent resize-none focus:outline-none py-3.5 px-2 text-[15px] text-white placeholder-gray-600 max-h-32 custom-scrollbar" rows={1} style={{ minHeight: '50px' }} />
                             <button onClick={handleSend} disabled={(!input.trim() && !selectedImage) || isTyping} className={`p-3 mb-0.5 rounded-full transition shadow-lg ${input.trim() || selectedImage ? `bg-gradient-to-r ${activeTheme} text-white hover:scale-105` : 'bg-white/5 text-gray-600 cursor-not-allowed'}`}><Send size={18} fill={input.trim() ? "currentColor" : "none"} /></button>
                         </div>
-                        <p className="text-center text-[10px] text-gray-700 mt-3">My Guru can make mistakes. Check important info.</p>
                     </div>
                 </div>
             </>
         )}
-
       </main>
     </div>
   );

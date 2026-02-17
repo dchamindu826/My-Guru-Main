@@ -1,15 +1,22 @@
+# --- Dependencies ---
 node_modules/
-package-lock.json
-yarn.lock
+brain/venv/
+venv/
+env/
 
-# Secrets (මේවා GitHub යන්න බෑ)
+# --- Python Compiled Files ---
+__pycache__/
+*.py[cod]
+
+# --- Environment Variables (Security Risk!) ---
 .env
-.env.local
-.env.*
+brain/.env
 backend/.env
-frontend/.env
 
-# Build Files
-dist/
-build/
-uploads
+# --- OS Files ---
+.DS_Store
+Thumbs.db
+
+# --- IDE Files ---
+.vscode/
+.idea/

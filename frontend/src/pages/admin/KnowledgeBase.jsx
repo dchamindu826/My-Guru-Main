@@ -89,6 +89,10 @@ export default function KnowledgeBase() {
             className="bg-black border border-white/10 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-amber-500"
         >
             <option value="All">All Grades</option>
+            <option value="10">Grade 06</option>
+            <option value="10">Grade 07</option>
+            <option value="10">Grade 08</option>
+            <option value="10">Grade 09</option>
             <option value="10">Grade 10</option>
             <option value="11">Grade 11</option>
         </select>
@@ -115,6 +119,7 @@ export default function KnowledgeBase() {
             <option value="textbook">Textbook</option>
             <option value="paper">Past Paper</option>
             <option value="marking_scheme">Marking Scheme</option>
+            <option value="open_sources">Open Sources</option>
         </select>
 
         {/* Reset Button */}

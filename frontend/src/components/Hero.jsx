@@ -55,12 +55,11 @@ export default function Hero() {
           {/* Expanded Description */}
           <div className="text-gray-400 text-base md:text-lg max-w-xl mx-auto lg:mx-0 leading-relaxed space-y-2">
             <p>
-              The Digital Architect for your Education. 
-              Unlock your full potential with customized learning paths and instant support.
+              The 1st AI Teacher In Sri Lanka
             </p>
             <p className="text-gray-300 font-medium">
-              විද්‍යාව, ගණිතය, ඉතිහාසය ඇතුළු ඕනෑම විෂයක් සරල සිංහලෙන්, පියවරෙන් පියවර නිවැරදිව ඉගෙන ගන්න. 
-              ඔබේ පෞද්ගලික ගුරුවරයා දැන් ඔබ ළඟම.
+               6 ශ්‍රේණියේ සිට උසස් අධ්‍යාපනය දක්වා ඕනෑම විෂයක් සරලව පියවරෙන් පියවර SMART විදිහට ඉගෙන ගන්න..
+                ඔබගේ පෞද්ගලික ගුරුවරයා වෙත පිවිසෙන්න.
             </p>
           </div>
 

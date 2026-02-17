@@ -36,7 +36,7 @@ export default function IngestDocs() {
 
     try {
         // 👇👇👇 මචං මේ URL එක හරියටම බලන්න. මේක Localhost වෙන්නම ඕනේ.
-        const response = await fetch('http://localhost:5002/ingest', { 
+        const response = await fetch('https://myguru.lumi-automation.com/brain/ingest', { 
             method: 'POST',
             body: formData,
             signal: abortCtrl.signal,

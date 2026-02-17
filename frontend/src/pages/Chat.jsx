@@ -154,7 +154,7 @@ export default function Chat() {
             payload.image_data = await toBase64(imageToSend);
         }
 
-        const res = await fetch("http://localhost:5002/chat", {
+        const res = await fetch("https://myguru.lumi-automation.com/brain/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-api-key": "sk_7MYoNP9bT6l_aUKh8svMJEMFTY0vY7uv" },
             body: JSON.stringify(payload)

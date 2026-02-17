@@ -18,9 +18,8 @@ export default function IngestDocs() {
     e.preventDefault();
     if(!file || !meta.subject) return alert("Please fill all fields");
 
-    // 🔥 පරණ Logs වෙනුවට අලුත් ඒවා පේන්න ඕනේ
     setLoading(true);
-    setLogs(["🚀 Initializing System...", "📂 Reading PDF File...", "⏳ Connecting to Local Brain Engine..."]);
+    setLogs(["🚀 Initializing System...", "📂 Reading PDF File...", "⏳ Connecting to Brain Engine..."]);
 
     const abortCtrl = new AbortController();
     setController(abortCtrl);
@@ -35,7 +34,7 @@ export default function IngestDocs() {
     formData.append('endPage', pages.end);
 
     try {
-        // 👇👇👇 මචං මේ URL එක හරියටම බලන්න. මේක Localhost වෙන්නම ඕනේ.
+        // 🔥 FIXED: Updated to Production Domain URL
         const response = await fetch('https://myguru.lumi-automation.com/brain/ingest', { 
             method: 'POST',
             body: formData,
@@ -62,7 +61,6 @@ export default function IngestDocs() {
             setLogs(prev => [...prev, "🛑 Process Stopped by User."]);
         } else {
             setLogs(prev => [...prev, `❌ Error: ${err.message}`]);
-            setLogs(prev => [...prev, "👉 Make sure 'main.py' is running on Port 5002"]);
         }
     } finally {
         setLoading(false);
@@ -85,7 +83,6 @@ export default function IngestDocs() {
       </h1>
 
       <div className="grid lg:grid-cols-12 gap-8">
-        {/* FORM SECTION */}
         <div className="lg:col-span-4 bg-[#111] p-6 rounded-3xl border border-white/10 h-fit shadow-2xl">
             <h2 className="text-lg font-bold mb-5 flex items-center gap-2 text-gray-200">
                 <Upload size={18} className="text-green-500"/> Config & Upload
@@ -117,7 +114,6 @@ export default function IngestDocs() {
             </form>
         </div>
 
-        {/* LOG SECTION */}
         <div className="lg:col-span-8 flex flex-col h-[650px]">
             <div className="bg-[#0f0f0f] border border-white/10 rounded-t-3xl p-4 flex items-center justify-between"><div className="flex items-center gap-2"><Terminal size={18} className="text-amber-500"/> <span className="font-mono text-sm font-bold text-gray-300">Live Logs</span></div><button onClick={() => setLogs([])} className="text-xs text-gray-500 flex items-center gap-1"><RefreshCw size={12}/> Clear</button></div>
             <div className="flex-1 bg-black border-x border-b border-white/10 rounded-b-3xl p-6 overflow-y-auto font-mono text-xs md:text-sm space-y-2 custom-scrollbar">

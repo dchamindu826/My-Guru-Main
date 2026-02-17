@@ -42,21 +42,27 @@ export default function KnowledgeBase() {
     }
   };
 
-  // 🔥 DELETE FUNCTION
+  // 🔥 DELETE FUNCTION (FIXED)
   const handleDeletePages = async () => {
       if(selectedPages.length === 0) return;
       if(!window.confirm(`Are you sure you want to delete ${selectedPages.length} pages from ${selectedDoc.subject}?`)) return;
 
       setIsDeleting(true);
       try {
-          // අපි මේකට Backend එකට අලුත් request එකක් යවනවා metadata වලින් delete කරන්න
-          await api.post('/knowledge/delete_pages', {
-              subject: selectedDoc.subject,
-              grade: selectedDoc.grade,
-              medium: selectedDoc.medium,
-              category: selectedDoc.category || selectedDoc.type,
-              pages: selectedPages
+          // 👇👇👇 මෙතන තමයි වෙනස. කෙලින්ම Brain URL එකට යවනවා.
+          const res = await fetch('https://myguru.lumi-automation.com/brain/knowledge/delete_pages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  subject: selectedDoc.subject,
+                  grade: selectedDoc.grade,
+                  medium: selectedDoc.medium,
+                  category: selectedDoc.category || selectedDoc.type,
+                  pages: selectedPages
+              })
           });
+
+          if (!res.ok) throw new Error("Failed to delete pages from Brain Engine");
 
           // සාර්ථක නම් UI එක update කරන්න
           alert("Pages deleted successfully!");

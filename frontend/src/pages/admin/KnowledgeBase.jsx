@@ -154,8 +154,11 @@ export default function KnowledgeBase() {
             <Filter size={16} /> Filters:
         </div>
 
+        {/* 🔥 Grade Filter Update කරා O/L, A/L එක්ක */}
         <select value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)} className="bg-black border border-white/10 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-amber-500">
             <option value="All">All Grades</option>
+            <option value="O/L">O/L</option>
+            <option value="A/L">A/L</option>
             {[6,7,8,9,10,11,12,13].map(g => <option key={g} value={g.toString()}>Grade {g}</option>)}
         </select>
 
@@ -166,11 +169,13 @@ export default function KnowledgeBase() {
             <option value="Tamil">Tamil</option>
         </select>
 
+        {/* 🔥 Category Filter Update කරා Picture PDF එක්ක (Ingest එකට සමානව) */}
         <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="bg-black border border-white/10 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-amber-500">
             <option value="All">All Types</option>
-            <option value="textbook">Textbook</option>
+            <option value="textbook">Text Book</option>
             <option value="paper_marking">Past Paper/Marking</option>
-            <option value="open_resource">Open Sources</option>
+            <option value="open_resource">Open Source</option>
+            <option value="picture_pdf">Picture PDF</option>
         </select>
 
         <button onClick={resetFilters} className="ml-auto flex items-center gap-2 text-xs text-red-400 hover:text-red-300 transition">

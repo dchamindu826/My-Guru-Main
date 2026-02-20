@@ -98,7 +98,8 @@ export default function IngestDocs() {
 
                 <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
-                        <div><label className="text-[10px] text-gray-500 uppercase font-bold">Grade</label><select className="w-full bg-black border border-white/10 rounded-lg p-2.5 text-sm text-white" value={meta.grade} onChange={e => setMeta({...meta, grade: e.target.value})}>{[6,7,8,9,10,11].map(g => <option key={g} value={g}>Grade {g}</option>)}</select></div>
+                        {/* 🔥 Grade Dropdown Update කරා O/L, A/L එක්ක */}
+                        <div><label className="text-[10px] text-gray-500 uppercase font-bold">Grade</label><select className="w-full bg-black border border-white/10 rounded-lg p-2.5 text-sm text-white" value={meta.grade} onChange={e => setMeta({...meta, grade: e.target.value})}><option value="O/L">O/L</option><option value="A/L">A/L</option>{[6,7,8,9,10,11].map(g => <option key={g} value={g}>Grade {g}</option>)}</select></div>
                         <div><label className="text-[10px] text-gray-500 uppercase font-bold">Medium</label><select className="w-full bg-black border border-white/10 rounded-lg p-2.5 text-sm text-white" value={meta.medium} onChange={e => setMeta({...meta, medium: e.target.value})}><option>Sinhala</option><option>English</option><option>Tamil</option></select></div>
                     </div>
                     {/* 🔥 Category එකට Picture PDF add කරා 🔥 */}

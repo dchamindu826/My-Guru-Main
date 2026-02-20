@@ -35,7 +35,7 @@ export default function IngestDocs() {
 
     try {
         // 🔥 FIXED: Updated to Production Domain URL
-        const response = await fetch('https://myguru.lumi-automation.com/brain/ingest', { 
+        const response = await fetch('https://myguru.lumi-automation.com/ingest', { 
             method: 'POST',
             body: formData,
             signal: abortCtrl.signal,

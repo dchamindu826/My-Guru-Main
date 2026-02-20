@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File, Form, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -30,19 +30,12 @@ app.add_middleware(
 )
 
 # --- KEYS ---
-API_KEYS = [
-    "AIzaSyA2Wy_hsYL8BuWPO5Sn9Bk4YNiNtjwnqmI",
-    "AIzaSyANOxqfVJkyJWdrH7aJ6E64T41-_prrWZ4",
-    "AIzaSyCMxhwBfJc8WQ-DtTyabi3hbyjDYKZFe7A",
-    "AIzaSyDodD4f4rcUZuEl93zMCy_waRZZeiWRlTo",
-    "AIzaSyAus-kuUo1jM8U1yU202YqB6604qq4kAiY",
-    "AIzaSyA3h24AdZGHR-Ip-cC0Iez8AjDcpBrx3O0",
-    "AIzaSyB7g8ETokT3eUkXzhdxoi3LcGysIthdXRg",
-    "AIzaSyBWWqNNdU9suL9hnHHIV5uPvJDVgh9g6FQ",
-    "AIzaSyD2hr_U0vFPJVrH9Na190oz9NOie1hb_fI",
-    "AIzaSyAoP6llfIbWEGZdsaoIVj-ohJc2_Ahpqx0",
-    "AIzaSyD6qSt3Cjb7tPtoPLc0KXp-MLPZdKpk0QQ"
-]
+# .env එකෙන් GEMINI_API_KEYS අරගෙන list එකක් විදිහට හදාගන්නවා
+keys_string = os.getenv("GEMINI_API_KEYS", "")
+API_KEYS = [k.strip() for k in keys_string.split(",") if k.strip()]
+
+if not API_KEYS:
+    print("⚠️ WARNING: No API Keys found in .env file!")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -54,6 +47,10 @@ def get_random_client():
     return genai.Client(api_key=random.choice(API_KEYS))
 
 def safe_google_api_call(contents, is_json=False):
+    if not API_KEYS:
+        print("⚠️ Error: API Keys array is empty.")
+        return None
+        
     start_index = random.randint(0, len(API_KEYS) - 1)
     for i in range(len(API_KEYS)):
         current_key = API_KEYS[(start_index + i) % len(API_KEYS)]
@@ -79,6 +76,14 @@ class ChatRequest(BaseModel):
 
 class DeleteRequest(BaseModel):
     ids: list[int]
+
+# 🔥 අලුත් Delete Pages Request Model එක
+class DeletePagesRequest(BaseModel):
+    subject: str
+    grade: str | int
+    medium: str
+    category: str
+    pages: list[int]
 
 # --- BRAIN LOGIC ---
 def generate_smart_answer(context, question, subject, medium, img=None):
@@ -161,8 +166,49 @@ async def delete_knowledge(payload: DeleteRequest):
     response = supabase.table("documents").delete().in_("id", payload.ids).execute()
     return {"message": "Deleted", "data": response.data}
 
+# 🔥 අලුත් Delete Pages Endpoint එක
+@app.post("/knowledge/delete_pages")
+async def delete_knowledge_pages(payload: DeletePagesRequest):
+    try:
+        print(f"🗑️ Delete Request - Subject: {payload.subject}, Pages: {payload.pages}")
+        
+        # 1. Subject සහ Medium වලට අදාල ඔක්කොම records ටික Database එකෙන් ගන්නවා
+        query = supabase.table("documents").select("id, metadata") \
+            .eq("metadata->>subject", payload.subject) \
+            .eq("metadata->>medium", payload.medium)
+        
+        res = query.execute()
+        
+        ids_to_delete = []
+        
+        # 2. Python වලින්ම Page එක සහ Grade එක හරියටම match වෙනවද කියලා check කරනවා
+        for item in res.data:
+            meta = item.get("metadata", {})
+            
+            # String ද Number ද අදාල නෑ, දෙකම එකම ජාතියට හරවලා බලනවා
+            is_grade_match = str(meta.get("grade")) == str(payload.grade)
+            is_page_match = int(meta.get("page", -1)) in payload.pages
+            
+            if is_grade_match and is_page_match:
+                ids_to_delete.append(item["id"])
+        
+        print(f"🔍 Found {len(ids_to_delete)} exact records to delete.")
+        
+        # 3. හොයාගත්තු IDs ටික Database එකෙන් මකලා දානවා
+        if ids_to_delete:
+            del_res = supabase.table("documents").delete().in_("id", ids_to_delete).execute()
+            print(f"✅ Successfully deleted {len(del_res.data)} records from Supabase.")
+            
+        return {"message": "Pages deleted successfully", "deleted_count": len(ids_to_delete)}
+    except Exception as e:
+        print(f"❌ Delete Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 @app.post("/ingest")
 async def ingest_pdf(
+    request: Request,
     pdf: UploadFile = File(...),
     grade: str = Form(...),
     subject: str = Form(...),
@@ -178,21 +224,49 @@ async def ingest_pdf(
             images = convert_from_bytes(pdf_bytes, first_page=startPage, last_page=endPage, dpi=300)
             
             for i, image in enumerate(images):
+                # 🔥 User stop කරා නම් සම්පූර්ණයෙන්ම loop එකෙන් සහ function එකෙන් එළියට යනවා
+                if await request.is_disconnected():
+                    print("🛑 Client Disconnected. Force stopping backend extraction.")
+                    return 
+
                 page_num = startPage + i
-                client = get_random_client()
                 prompt = f"Extract all text/diagrams. Language: {medium}. Keep structure. Do NOT summarize."
                 
-                try:
-                    response = client.models.generate_content(model='gemini-2.0-flash', contents=[image, prompt])
-                    supabase.table("documents").insert({
-                        "content": response.text,
-                        "metadata": {"grade": grade, "subject": subject, "medium": medium, "category": category, "page": page_num}
-                    }).execute()
-                    yield f"✅ Page {page_num} Saved!\n"
-                except Exception as e:
-                    yield f"❌ Error Page {page_num}: {e}\n"
-                    time.sleep(1)
+                success = False
+                for attempt in range(3):
+                    client = get_random_client()
+                    try:
+                        if i > 0 or attempt > 0:
+                            time.sleep(4) 
+                            
+                        response = client.models.generate_content(model='gemini-2.0-flash', contents=[image, prompt])
+                        
+                        supabase.table("documents").insert({
+                            "content": response.text,
+                            "metadata": {"grade": grade, "subject": subject, "medium": medium, "category": category, "page": page_num}
+                        }).execute()
+                        
+                        # 🔥 Content එකේ මුල් අකුරු 60 Preview එකක් විදිහට යවනවා
+                        snippet = response.text[:60].replace('\n', ' ') + "..."
+                        yield f"✅ Page {page_num} Saved! [Preview: {snippet}]\n"
+                        
+                        success = True
+                        break 
+                        
+                    except Exception as api_err:
+                        err_str = str(api_err)
+                        if "429" in err_str or "503" in err_str:
+                            yield f"⚠️ API Limit hit on Page {page_num}. Retrying... ({attempt+1}/3)\n"
+                            time.sleep(5) 
+                        else:
+                            yield f"❌ Database/API Error Page {page_num}: {err_str}\n"
+                            break 
+                            
+                if not success:
+                    yield f"❌ Failed to process Page {page_num} after retries.\n"
+
         except Exception as e:
              yield f"❌ Critical Error: {e}\n"
         yield "🎉 Complete!"
+        
     return StreamingResponse(process_stream(), media_type="text/plain")

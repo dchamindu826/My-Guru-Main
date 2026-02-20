@@ -1,9 +1,8 @@
 import axios from 'axios';
 
-// 🔥 VPS එකේදි කෙලින්ම Domain එක දාන්න
-const BASE_URL = 'https://myguru.lumi-automation.com/api';
-
-console.log('🔗 API Connected to:', BASE_URL);
+// Local test කරන්න මේක දාගන්න
+//const BASE_URL = 'http://localhost:5000/api'; 
+ const BASE_URL = 'https://myguru.lumi-automation.com/api'; // (Production එකට දාද්දි මේක අන්-කමෙන්ට් කරන්න)
 
 export const api = axios.create({
   baseURL: BASE_URL,

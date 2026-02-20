@@ -49,7 +49,6 @@ export default function KnowledgeBase() {
 
       setIsDeleting(true);
       try {
-          // 👇👇👇 මෙතන තමයි වෙනස. කෙලින්ම Brain URL එකට යවනවා.
           const res = await fetch('https://myguru.lumi-automation.com/brain/knowledge/delete_pages', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -64,11 +63,32 @@ export default function KnowledgeBase() {
 
           if (!res.ok) throw new Error("Failed to delete pages from Brain Engine");
 
-          // සාර්ථක නම් UI එක update කරන්න
+          // 🔥 UI එකෙන් අයින් කරනවා (Type issues එන්නැති වෙන්න String කරලා check කරනවා)
+          setData(prevData => {
+              return prevData.map(doc => {
+                  if (
+                      doc.subject === selectedDoc.subject && 
+                      String(doc.grade) === String(selectedDoc.grade) && 
+                      doc.medium === selectedDoc.medium
+                  ) {
+                      const remainingPages = doc.pages_list.filter(p => !selectedPages.includes(p));
+                      return {
+                          ...doc,
+                          pages_list: remainingPages,
+                          total_pages: remainingPages.length
+                      };
+                  }
+                  return doc;
+              }).filter(doc => doc.total_pages > 0);
+          });
+
           alert("Pages deleted successfully!");
           setSelectedPages([]);
-          setSelectedDoc(null); // Close modal
-          fetchData(); // Refresh data
+          setSelectedDoc(null); 
+          
+          // ❌ fetchData() එක මෙතනින් සම්පූර්ණයෙන්ම අයින් කරා. 
+          // එතකොට පරණ data ඇවිත් UI එක replace වෙන්නේ නෑ.
+          
       } catch (error) {
           console.error("Delete failed:", error);
           alert("Failed to delete pages. Check console.");

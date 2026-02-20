@@ -68,7 +68,8 @@ export default function IngestDocs() {
     }
   };
 
-  const handleStop = () => {
+  const handleStop = (e) => {
+      if (e) e.preventDefault(); // 🔥 Form එක auto submit වෙන එක නවත්තනවා
       if (controller) {
           controller.abort();
           setLoading(false);
@@ -100,7 +101,8 @@ export default function IngestDocs() {
                         <div><label className="text-[10px] text-gray-500 uppercase font-bold">Grade</label><select className="w-full bg-black border border-white/10 rounded-lg p-2.5 text-sm text-white" value={meta.grade} onChange={e => setMeta({...meta, grade: e.target.value})}>{[6,7,8,9,10,11].map(g => <option key={g} value={g}>Grade {g}</option>)}</select></div>
                         <div><label className="text-[10px] text-gray-500 uppercase font-bold">Medium</label><select className="w-full bg-black border border-white/10 rounded-lg p-2.5 text-sm text-white" value={meta.medium} onChange={e => setMeta({...meta, medium: e.target.value})}><option>Sinhala</option><option>English</option><option>Tamil</option></select></div>
                     </div>
-                    <div><label className="text-[10px] text-gray-500 uppercase font-bold">Category</label><select className="w-full bg-black border border-white/10 rounded-lg p-2.5 text-sm text-white" value={meta.category} onChange={e => setMeta({...meta, category: e.target.value})}><option value="textbook">Text Book</option><option value="paper_marking">Paper & Marking</option><option value="open_resource">Open Resource</option></select></div>
+                    {/* 🔥 Category එකට Picture PDF add කරා 🔥 */}
+                    <div><label className="text-[10px] text-gray-500 uppercase font-bold">Category</label><select className="w-full bg-black border border-white/10 rounded-lg p-2.5 text-sm text-white" value={meta.category} onChange={e => setMeta({...meta, category: e.target.value})}><option value="textbook">Text Book</option><option value="paper_marking">Paper & Marking</option><option value="open_resource">Open Resource</option><option value="picture_pdf">Picture PDF</option></select></div>
                     <div><label className="text-[10px] text-gray-500 uppercase font-bold">Subject</label><input type="text" className="w-full bg-black border border-white/10 rounded-lg p-2.5 text-sm text-white" value={meta.subject} onChange={e => setMeta({...meta, subject: e.target.value})} placeholder="Subject Name" /></div>
                     <div className="grid grid-cols-2 gap-3">
                         <div><label className="text-[10px] text-gray-500 uppercase font-bold">Start Page</label><input type="number" className="w-full bg-black border border-white/10 rounded-lg p-2.5 text-sm text-white" value={pages.start} onChange={e => setPages({...pages, start: e.target.value})} /></div>

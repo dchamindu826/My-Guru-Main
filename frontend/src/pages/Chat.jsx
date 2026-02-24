@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { 
   Send, Menu, X, Image as ImageIcon, Bot, 
-  Zap, LogOut, Crown, Infinity, BookOpen, Trash2, GraduationCap, ChevronRight, MessageSquare, Sparkles, Globe, Smile
+  Zap, LogOut, Crown, Infinity, BookOpen, Trash2, GraduationCap, ChevronRight, MessageSquare, Sparkles, Globe, Smile, Search, Layers
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api'; 
@@ -22,7 +22,8 @@ const SUBJECT_THEMES = {
     "Geography": "from-green-600 to-lime-500",
     "Civic": "from-slate-600 to-gray-500",
     "Media": "from-violet-600 to-purple-500",
-    "Tamil": "from-fuchsia-600 to-pink-500"
+    "Tamil": "from-fuchsia-600 to-pink-500",
+    "Agriculture": "from-lime-500 to-green-600"
 };
 
 export default function Chat() {
@@ -51,6 +52,27 @@ export default function Chat() {
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
+
+  // 🔥 AI Loading Animation States
+  const [loadingStep, setLoadingStep] = useState(0);
+
+  useEffect(() => {
+      let interval;
+      if (isTyping) {
+          setLoadingStep(0);
+          interval = setInterval(() => {
+              setLoadingStep((prev) => (prev + 1) % 4);
+          }, 2000); // තත්පර 2න් 2කට text එක මාරු වෙනවා
+      }
+      return () => clearInterval(interval);
+  }, [isTyping]);
+
+  const loadingTexts = [
+      { icon: <Search size={14} className="text-blue-400"/>, text: "ප්‍රශ්නය විශ්ලේෂණය කරමින්..." },
+      { icon: <BookOpen size={14} className="text-amber-400"/>, text: "Past Papers සහ Marking Scheme පරීක්ෂා කරමින්..." },
+      { icon: <Layers size={14} className="text-green-400"/>, text: "පෙළපොත් වලින් කරුණු ගොනු කරමින්..." },
+      { icon: <Sparkles size={14} className="text-purple-400"/>, text: "විභාගයට ගැලපෙන පිළිතුරක් නිර්මාණය කරමින්..." }
+  ];
 
   useEffect(() => {
       localStorage.setItem('myguru_sessions', JSON.stringify(sessions));
@@ -140,18 +162,31 @@ export default function Chat() {
         return;
     }
 
-    const userMsg = { id: Date.now(), role: 'user', content: input, image: imagePreview, timestamp: new Date() };
+    // 1. පින්තූරයක් තියෙනවා නම්, මුලින්ම ඒක Base64 වලට හරවගන්නවා
+    let base64String = null;
+    if (selectedImage) {
+        base64String = await toBase64(selectedImage);
+    }
+
+    // 2. Chat History එකට දාන්නේ Blob URL එක (imagePreview) නෙමෙයි, Base64 String එකයි!
+    const userMsg = { 
+        id: Date.now(), 
+        role: 'user', 
+        content: input, 
+        image: base64String, // 🔥 Fix: මෙතන තමයි වෙනස් කළේ
+        timestamp: new Date() 
+    };
+    
     addMessageToSession(activeSubject, userMsg);
     
     setInput("");
-    const imageToSend = selectedImage;
-    clearImage();
+    clearImage(); // Input එකේ තියෙන පින්තූරේ අයින් කරනවා
     setIsTyping(true);
 
     try {
         let payload = { question: userMsg.content, subject: activeSubject, medium: medium }; 
-        if (imageToSend) {
-            payload.image_data = await toBase64(imageToSend);
+        if (base64String) {
+            payload.image_data = base64String;
         }
 
         const res = await fetch("https://myguru.lumi-automation.com/brain/chat", {
@@ -338,15 +373,20 @@ export default function Chat() {
                         </motion.div>
                     ))}
                     {isTyping && (
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
-                             <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center`}><Bot size={16} className="text-white"/></div>
-                             <div className="bg-[#111] border border-white/5 px-5 py-4 rounded-2xl rounded-tl-sm flex items-center gap-1.5">
-                                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-                                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                             </div>
-                        </motion.div>
-                    )}
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
+        <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center shadow-lg`}>
+            <Bot size={16} className="text-white animate-pulse"/>
+        </div>
+        <div className="bg-[#111] border border-white/5 px-5 py-3.5 rounded-2xl rounded-tl-sm flex items-center gap-3 shadow-sm">
+            <div className="animate-spin-slow">
+                {loadingTexts[loadingStep].icon}
+            </div>
+            <span className="text-[13px] text-gray-400 font-medium animate-pulse tracking-wide">
+                {loadingTexts[loadingStep].text}
+            </span>
+        </div>
+    </motion.div>
+)}
                     <div ref={messagesEndRef} />
                 </div>
 

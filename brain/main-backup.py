@@ -30,6 +30,7 @@ app.add_middleware(
 )
 
 # --- KEYS ---
+# .env එකෙන් GEMINI_API_KEYS අරගෙන list එකක් විදිහට හදාගන්නවා
 keys_string = os.getenv("GEMINI_API_KEYS", "")
 API_KEYS = [k.strip() for k in keys_string.split(",") if k.strip()]
 
@@ -63,10 +64,7 @@ def safe_google_api_call(contents, is_json=False):
             )
             return response
         except Exception as e:
-            # 🔥 Rate Limit ආවොත් පොඩි වෙලාවක් ඉඳලා ඊළඟ key එකට යනවා
-            if "429" in str(e) or "503" in str(e): 
-                time.sleep(0.5)
-                continue
+            if "429" in str(e) or "503" in str(e): continue
             print(f"⚠️ Key Error: {e}")
     return None
 
@@ -79,6 +77,7 @@ class ChatRequest(BaseModel):
 class DeleteRequest(BaseModel):
     ids: list[int]
 
+# 🔥 අලුත් Delete Pages Request Model එක
 class DeletePagesRequest(BaseModel):
     subject: str
     grade: str | int
@@ -99,111 +98,96 @@ def generate_smart_answer(context, question, subject, medium, img=None):
             if category == 'PAPER_MARKING':
                 has_past_paper = True
                 
-            context_text += f"\n[SOURCE: {category} | Grade {meta.get('grade')}]\n{item.get('content', '')}\n---"
+            # 🔥 Source එක Marking ද Textbook ද කියලා AI එකට පැහැදිලිව දෙනවා
+            context_text += f"\n[SOURCE TYPE: {category} | Grade {meta.get('grade')}]\n{item.get('content', '')}\n---"
     
-    # 🔥 The Anti-Hallucination & Strict Examiner Prompt
+    # 🔥 The New & Powerful Teacher Prompt
     prompt = f"""
-    You are an expert Sri Lankan School Examiner (My Guru).
+    You are an expert, highly experienced Sri Lankan School Teacher and an Examiner (My Guru) for O/L and A/L students.
     
-    SUBJECT: {subject}
-    TARGET MEDIUM: {medium}
+    SETTINGS:
+    - Subject: {subject}
+    - TARGET MEDIUM: {medium} (You MUST reply ONLY in this language).
     
-    OFFICIAL SYLLABUS CONTEXT (Marking Schemes & Textbooks):
-    {context_text if context_text else "NO CONTEXT FOUND."}
+    CONTEXT (Database Notes from Textbooks and Marking Schemes):
+    {context_text if context_text else "No specific database notes found. Use your expert knowledge matching the Sri Lankan curriculum."}
     
     STUDENT'S QUESTION:
     {question}
     
-    CRITICAL EXAMINER INSTRUCTIONS (FOLLOW STRICTLY):
-    1. **ZERO HALLUCINATIONS (NO LIES):** You MUST base your answers STRICTLY on the OFFICIAL SYLLABUS CONTEXT provided above. NEVER invent, guess, or make up facts. 
-    2. **IF CONTEXT IS MISSING:** If the exact answer is not in the context, use ONLY 100% verified, factual standard Sri Lankan school syllabus knowledge.
-    3. **ANSWER EVERY SINGLE PART:** Look at the question carefully. If there are multiple parts (e.g., i, ii, iii, iv or a, b, c), you MUST provide an answer for EVERY part. Do not skip anything.
-    4. **Source Merging:** Use 'PAPER_MARKING' sources for the exact specific points (bullet points), and use 'TEXTBOOK' sources to describe those points fully.
-    5. **Tone & Language:** Use FORMAL, ACADEMIC WRITTEN LANGUAGE (විභාගයට ලියන ලිඛිත භාෂාව) for the main answer. You can start with a friendly "හරි පුතේ, පිළිතුරු මෙන්න:".
-    6. **Formatting:** DO NOT use Markdown bold asterisks (**). Use clear paragraphs, numbered lists, and normal dashes (-).
+    STRICT EXAMINER INSTRUCTIONS:
+    1. **Medium & Tone Enforcer:** Respond entirely in {medium}. Be extremely encouraging, friendly, and professional. Use words like "Puthe" or "Duwa" (if Sinhala) naturally. 
+    2. **For MCQ or Short Questions:** - Give the direct, correct answer first clearly.
+       - Then, provide a simple, beautiful explanation of *WHY* it is the correct answer using the provided Context. Do not just drop the answer.
+    3. **For Essay / Long Questions (HIGH PRIORITY):**
+       - If this is a descriptive question, DO NOT give short answers. 
+       - Provide a COMPREHENSIVE, well-structured answer.
+       - Prioritize the exact points from any 'PAPER_MARKING' source if available. Expand on those points using 'TEXTBOOK' sources.
+       - Use clear paragraphs and bullet points (-) for readability.
+    4. **Past Paper Reference Rule:**
+       - I have detected past paper data in the context: {has_past_paper}. 
+       - If the user's question is related to a past paper or marking scheme found in the context, EXPLICITLY mention it to motivate them. (e.g., "පුතේ, මේ ප්‍රශ්නය පසුගිය විභාගයකදීත් අහලා තියෙනවා, ඒ නිසා මේක ගොඩක් වැදගත්..." or equivalent in {medium}).
+    5. **Formatting Rules:** - DO NOT use Markdown asterisks (like **this**) anywhere. It looks messy on the frontend. Use clean spacing.
+       - You may use a few relevant emojis naturally.
     """
     
     contents = [prompt]
-    if img: contents.extend([img, "Analyze this image carefully. Read EVERY sub-question (i, ii, iii...) and answer ALL of them accurately based on the context."])
+    if img: contents.extend([img, "Analyze this image carefully based on the Sri Lankan school curriculum and the provided context."])
     
     res = safe_google_api_call(contents)
     return res.text if res else "System busy. පොඩ්ඩක් ඉඳලා ආයේ ට්‍රයි කරන්න පුතේ."
 
 # --- ENDPOINTS ---
-
 @app.post("/chat")
-def chat_endpoint(request: ChatRequest):
+async def chat_endpoint(request: ChatRequest):
     print(f"📩 Question: {request.question} | Subject: {request.subject} | Medium: {request.medium}")
+    
+    kw_prompt = f'Extract keywords from "{request.question}" in English and Sinhala. Output JSON Array: ["kw1", "kw2"]'
+    kw_res = safe_google_api_call(kw_prompt, is_json=True)
+    keywords = []
+    try:
+        if kw_res: keywords = json.loads(kw_res.text.strip().replace('```json', '').replace('```', ''))
+    except: pass
     
     img = None
     if request.image_data:
         try:
-            if "base64," in request.image_data: 
-                base64_str = request.image_data.split("base64,")[1]
-            else: 
-                base64_str = request.image_data
+            if "base64," in request.image_data: base64_str = request.image_data.split("base64,")[1]
+            else: base64_str = request.image_data
             img = Image.open(io.BytesIO(base64.b64decode(base64_str)))
-        except Exception as e:
-            print(f"⚠️ Image Load Error: {e}")
+        except: pass
 
-    # 🔥 1. Super-Charged Keyword Extraction
-    # ප්‍රශ්නේ තියෙන හැම අනු කොටසකින්ම තනි වචන (Single Words) විතරක් ගන්නවා.
-    kw_contents = []
-    if img:
-        kw_contents.append(img)
-        kw_prompt = f'Read ALL questions in this image and user query: "{request.question}". Extract 4 to 8 SINGLE-WORD, highly specific Sinhala root nouns to search in a database. If there are sub-questions (e.g., i, ii, iii), you MUST extract at least one keyword for EACH sub-question. Output ONLY a JSON Array of strings: ["word1", "word2", "word3"]'
-    else:
-        kw_prompt = f'Extract 4 to 8 SINGLE-WORD, highly specific Sinhala root nouns from "{request.question}". If there are sub-questions, extract keywords for EACH. Output ONLY a JSON Array of strings: ["word1", "word2"]'
-        
-    kw_contents.append(kw_prompt)
-    
-    kw_res = safe_google_api_call(kw_contents, is_json=True)
-    keywords = []
-    try:
-        if kw_res and kw_res.text: 
-            keywords = json.loads(kw_res.text.strip().replace('```json', '').replace('```', ''))
-    except Exception as e:
-        print(f"⚠️ Keyword Extraction Error: {e}")
-        pass
-        
-    print(f"🔑 Extracted Keywords: {keywords}")
-
-    # 🔥 2. Broader Context Fetching
-    # වචන වෙන් කරලා (split) හොයනවා Database එකේ අනිවාර්යයෙන්ම අහුවෙන්න.
     ctx = []
     seen = set()
+    # Increased context search limit to 5 for better coverage
     if keywords:
         for k in keywords:
-            words = k.split() # කෝකටත් වචන කඩලා ගන්නවා
-            for w in words:
-                if len(w) < 3: continue 
-                query = supabase.table("documents").select("content, metadata").eq("metadata->>subject", request.subject).ilike("content", f"%{w}%").limit(5)
-                res = query.execute()
-                for item in res.data:
-                    if item['content'] not in seen:
-                        ctx.append(item)
-                        seen.add(item['content'])
-                if len(ctx) >= 15: break # කලින්ට වඩා ලොකු Context එකක් යවනවා
-            if len(ctx) >= 15: break
+            query = supabase.table("documents").select("content, metadata").eq("metadata->>subject", request.subject).ilike("content", f"%{k}%").limit(5)
+            res = query.execute()
+            for item in res.data:
+                if item['content'] not in seen:
+                    ctx.append(item)
+                    seen.add(item['content'])
+            if len(ctx) >= 7: break # Collect up to 7 chunks for thoroughness
             
     print(f"📚 Found {len(ctx)} context items.")
 
     ans = generate_smart_answer(ctx, request.question, request.subject, request.medium, img)
     return {"answer": ans}
 
-# 🔥 මෙතනත් async අයින් කළා
 @app.delete("/knowledge/delete")
-def delete_knowledge(payload: DeleteRequest):
+async def delete_knowledge(payload: DeleteRequest):
     if not payload.ids: return {"message": "No IDs"}
     response = supabase.table("documents").delete().in_("id", payload.ids).execute()
     return {"message": "Deleted", "data": response.data}
 
-# 🔥 මෙතනත් async අයින් කළා
+# 🔥 අලුත් Delete Pages Endpoint එක
 @app.post("/knowledge/delete_pages")
-def delete_knowledge_pages(payload: DeletePagesRequest):
+async def delete_knowledge_pages(payload: DeletePagesRequest):
     try:
         print(f"🗑️ Delete Request - Subject: {payload.subject}, Pages: {payload.pages}")
         
+        # 1. Subject සහ Medium වලට අදාල ඔක්කොම records ටික Database එකෙන් ගන්නවා
         query = supabase.table("documents").select("id, metadata") \
             .eq("metadata->>subject", payload.subject) \
             .eq("metadata->>medium", payload.medium)
@@ -211,8 +195,12 @@ def delete_knowledge_pages(payload: DeletePagesRequest):
         res = query.execute()
         
         ids_to_delete = []
+        
+        # 2. Python වලින්ම Page එක සහ Grade එක හරියටම match වෙනවද කියලා check කරනවා
         for item in res.data:
             meta = item.get("metadata", {})
+            
+            # String ද Number ද අදාල නෑ, දෙකම එකම ජාතියට හරවලා බලනවා
             is_grade_match = str(meta.get("grade")) == str(payload.grade)
             is_page_match = int(meta.get("page", -1)) in payload.pages
             
@@ -221,6 +209,7 @@ def delete_knowledge_pages(payload: DeletePagesRequest):
         
         print(f"🔍 Found {len(ids_to_delete)} exact records to delete.")
         
+        # 3. හොයාගත්තු IDs ටික Database එකෙන් මකලා දානවා
         if ids_to_delete:
             del_res = supabase.table("documents").delete().in_("id", ids_to_delete).execute()
             print(f"✅ Successfully deleted {len(del_res.data)} records from Supabase.")
@@ -231,7 +220,7 @@ def delete_knowledge_pages(payload: DeletePagesRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ⚠️ Ingest එකේ async තියන්න ඕනේ මොකද ඒකෙ stream කරන නිසා. ඒක අවුලක් නෑ Admin විතරක් පාවිච්චි කරන නිසා.
+
 @app.post("/ingest")
 async def ingest_pdf(
     request: Request,
@@ -250,6 +239,7 @@ async def ingest_pdf(
             images = convert_from_bytes(pdf_bytes, first_page=startPage, last_page=endPage, dpi=300)
             
             for i, image in enumerate(images):
+                # 🔥 User stop කරා නම් සම්පූර්ණයෙන්ම loop එකෙන් සහ function එකෙන් එළියට යනවා
                 if await request.is_disconnected():
                     print("🛑 Client Disconnected. Force stopping backend extraction.")
                     return 
@@ -271,6 +261,7 @@ async def ingest_pdf(
                             "metadata": {"grade": grade, "subject": subject, "medium": medium, "category": category, "page": page_num}
                         }).execute()
                         
+                        # 🔥 Content එකේ මුල් අකුරු 60 Preview එකක් විදිහට යවනවා
                         snippet = response.text[:60].replace('\n', ' ') + "..."
                         yield f"✅ Page {page_num} Saved! [Preview: {snippet}]\n"
                         
@@ -279,7 +270,7 @@ async def ingest_pdf(
                         
                     except Exception as api_err:
                         err_str = str(api_err)
-                        if "429" in str(e) or "503" in str(e):
+                        if "429" in err_str or "503" in err_str:
                             yield f"⚠️ API Limit hit on Page {page_num}. Retrying... ({attempt+1}/3)\n"
                             time.sleep(5) 
                         else:
@@ -293,26 +284,4 @@ async def ingest_pdf(
              yield f"❌ Critical Error: {e}\n"
         yield "🎉 Complete!"
         
-@app.get("/knowledge/page_content")
-def get_page_content(subject: str, grade: str, medium: str, category: str, page: int):
-    try:
-        # Database එකෙන් අදාල පිටුව හොයනවා
-        query = supabase.table("documents").select("content, metadata") \
-            .eq("metadata->>subject", subject) \
-            .eq("metadata->>medium", medium)
-        
-        res = query.execute()
-        
-        for item in res.data:
-            meta = item.get("metadata", {})
-            # Grade සහ Page හරියටම සමානද බලනවා
-            if str(meta.get("grade")) == str(grade) and int(meta.get("page", -1)) == page:
-                return {"content": item.get("content", "No text content found.")}
-                
-        return {"content": "Page not found in database."}
-    except Exception as e:
-        print(f"❌ Fetch Page Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
     return StreamingResponse(process_stream(), media_type="text/plain")

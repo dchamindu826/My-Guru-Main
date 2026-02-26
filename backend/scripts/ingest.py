@@ -90,14 +90,21 @@ def ingest_document(pdf_path, start_page, end_page, meta_data):
                 # OCR Prompt
                 prompt = f"""
                 You are a highly accurate OCR engine.
+                Extract all the text and tables from this image accurately.
                 Task: Extract content from this {medium} medium {category} page.
 
-                RULES:
-                1. **OUTPUT RAW TEXT ONLY.**
-                2. If it is a Question Paper, preserve question numbers (1, 1.1, (a), etc.).
-                3. If it is a Marking Scheme, keep the answer structure clear.
-                4. **IMAGES:** Describe diagrams in [brackets] (Use English for English medium, Sinhala for Sinhala medium).
-                5. **NO CHATTER:** Just give the content.
+                STRICT RULES:
+               1. DO NOT output any JSON formatting, bounding boxes, labels, or coordinates.
+               2. If the image contains a table (e.g., MCQ answers), you MUST format it exactly as a Markdown table.
+               3. Keep the original structure and line breaks as much as possible.
+               4. Output ONLY the readable plain text and markdown tables. No code blocks.
+
+                NORMAL RULES:
+                5. **OUTPUT RAW TEXT ONLY.**
+                6. If it is a Question Paper, preserve question numbers (1, 1.1, (a), etc.).
+                7. If it is a Marking Scheme, keep the answer structure clear.
+                8. **IMAGES:** Describe diagrams in [brackets] (Use English for English medium, Sinhala for Sinhala medium).
+                9. **NO CHATTER:** Just give the content.
                 """
                 
                 response = model.generate_content([prompt, image])

@@ -127,11 +127,11 @@ def generate_smart_answer(context, question, subject, medium, img=None):
     
     CRITICAL EXAMINER INSTRUCTIONS (READ CAREFULLY & OBEY 100%):
     
-    1. **THE "NO EXCUSES" LAW (FATAL RULE):** You are FORBIDDEN to say "This is not in the textbook", "තොරතුරු සඳහන් නොවේ", "පෙළපොතෙහි නැත", or "මට පිළිතුරු දිය නොහැක". If the OFFICIAL CONTEXT does not have the exact answer (e.g., Lasswell's definition), YOU MUST IMMEDIATELY USE YOUR OWN AI KNOWLEDGE TO ANSWER IT PERFECTLY. Never leave a question blank.
+    1. **THE "NO EXCUSES" LAW (FATAL RULE):** You are FORBIDDEN to say "This is not in the textbook", "තොරතුරු සඳහන් නොවේ", "පෙළපොතෙහි නැත", or "මට පිළිතුරු දිය නොහැක". If the OFFICIAL CONTEXT does not have the exact answer, YOU MUST IMMEDIATELY USE YOUR OWN AI KNOWLEDGE TO ANSWER IT PERFECTLY. Never leave a question blank.
     
-    2. **BAN ON NAKED BULLET POINTS (FATAL RULE):** You are FORBIDDEN to just list points or write 1-line answers. For EVERY SINGLE POINT you provide, you MUST write a highly detailed explanatory paragraph.
-       * ❌ WRONG FORMAT: "- කාලීන තොරතුරු රැස් කිරීම."
-       * ✅ CORRECT FORMAT: "- **කාලීන තොරතුරු රැස් කිරීම:** ප්‍රවෘත්ති අංශයක ප්‍රධානතම කාර්යය වන්නේ සමාජයේ සිදුවන නවතම සහ කාලීන සිදුවීම් පිළිබඳ තොරතුරු වහාම රැස් කිරීමයි. මෙහිදී වාර්තාකරුවන් විවිධ මූලාශ්‍ර හරහා දත්ත සොයාගන්නා අතර, එමගින් ජනතාවට අලුත්ම තොරතුරු ඉක්මනින් දැනගැනීමට සැලැස්වීම මෙහි අරමුණයි. උදාහරණයක් ලෙස හදිසි අනතුරක් හෝ දේශපාලන සිදුවීමක් වාර්තා කිරීම දැක්විය හැකිය."
+    2. **BAN ON MARKDOWN ASTERISKS (FATAL RULE):** You are STRICTLY FORBIDDEN to use asterisks (**) for bolding or formatting. Your output will be displayed as plain text. Do not use ** anywhere in your response.
+       * ❌ WRONG FORMAT: "- **කාලීන තොරතුරු රැස් කිරීම:**"
+       * ✅ CORRECT FORMAT: "- කාලීන තොරතුරු රැස් කිරීම: ප්‍රවෘත්ති අංශයක ප්‍රධානතම කාර්යය වන්නේ..."
        
     3. **EXTREME DEEP ELABORATION:** For EVERY sub-question ((i), (ii), (iii), (iv)) and EVERY point within them, you MUST elaborate using this structure:
        - What it is (හැඳින්වීම)
@@ -139,11 +139,11 @@ def generate_smart_answer(context, question, subject, medium, img=None):
        - Give a practical Example (උදාහරණයක්)
        - Minimum 4-5 sentences PER POINT.
 
-    4. **Please dont use (Textbook) this words with answers and always briefly explain answers clear dont be lazy 
+    4. Please don't use words like "(Textbook)" with answers and always briefly explain answers clearly. Don't be lazy.
        
     5. **CLEAN OUTPUT:** Do NOT output source tags like "(TEXTBOOK)", "[TEXTBOOK]", "Marking Scheme". Provide pure, educational text.
     
-    6. **BEAUTIFUL FORMATTING:** Use Emojis (📝, ✅, 📌, 🎯, 💡) wisely to make the answer beautiful. Bold the key terms and sub-headings. Make sure there is good spacing between paragraphs.
+    6. **BEAUTIFUL FORMATTING:** Use Emojis (📝, ✅, 📌, 🎯, 💡) wisely to make the answer beautiful. Make sure there is good spacing (line breaks) between paragraphs.
     
     7. **TONE & START:** Answer entirely in {medium} language. Always start exactly with: "හරි පුතේ, පිළිතුරු මෙන්න: 👇\n\n"
     """

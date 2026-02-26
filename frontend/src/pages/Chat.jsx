@@ -362,16 +362,18 @@ export default function Chat() {
             <>
                 <div className="flex-1 overflow-y-auto px-4 pt-24 pb-48 md:px-32 lg:px-48 space-y-6 custom-scrollbar">
                     {currentMessages.map((msg) => (
-                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${msg.role === 'ai' ? `bg-[#111] border-white/10 text-white` : 'bg-transparent border-transparent'}`}>
-                                {msg.role === 'ai' ? <div className={`w-full h-full rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center`}><Bot size={16} /></div> : user?.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full" /> : <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">{(user?.email || "U").charAt(0).toUpperCase()}</div>}
-                            </div>
-                            <div className={`max-w-[85%] px-5 py-3.5 rounded-2xl text-[15px] leading-7 shadow-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-[#212121] text-white rounded-tr-sm' : 'bg-[#111] border border-white/5 text-gray-200 rounded-tl-sm'}`}>
-                                {msg.content}
-                                {msg.image && <img src={msg.image} className="mt-3 rounded-xl w-full border border-white/10 shadow-lg" />}
-                            </div>
-                        </motion.div>
-                    ))}
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+        
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${msg.role === 'ai' ? `bg-[#111] border-white/10 text-white` : 'bg-transparent border-transparent'}`}>
+            {msg.role === 'ai' ? <div className={`w-full h-full rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center`}><Bot size={16} /></div> : user?.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full" /> : <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">{(user?.email || "U").charAt(0).toUpperCase()}</div>}
+        </div>
+
+        <div className={`my-guru-font max-w-[85%] px-5 py-4 rounded-2xl font-medium leading-[32px] shadow-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-[#212121] text-white rounded-tr-sm' : 'bg-[#111] border border-white/5 text-gray-200 rounded-tl-sm'}`}>
+    {msg.content}
+</div>
+
+    </motion.div>
+))}
                     {isTyping && (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
         <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center shadow-lg`}>

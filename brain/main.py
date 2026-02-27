@@ -11,6 +11,7 @@ import base64
 import io
 import random
 import time
+import datetime
 from PIL import Image
 from pdf2image import convert_from_bytes
 from dotenv import load_dotenv
@@ -72,6 +73,29 @@ def safe_google_api_call(contents, is_json=False):
                 contents=contents,
                 config=config
             )
+
+            # 🔥 TOKEN TRACKING & COST CALCULATION
+            try:
+                usage = getattr(response, 'usage_metadata', None)
+                if usage:
+                    in_tokens = getattr(usage, 'prompt_token_count', 0) or 0
+                    out_tokens = getattr(usage, 'candidates_token_count', 0) or 0
+                    total_tokens = getattr(usage, 'total_token_count', 0) or 0
+                    
+                    if total_tokens > 0:
+                        # Cost for gemini-2.0-flash / 1.5-flash standard (0.075 per 1M in, 0.30 per 1M out)
+                        cost = ((in_tokens / 1000000.0) * 0.075) + ((out_tokens / 1000000.0) * 0.30)
+                        
+                        supabase.table("token_usage").insert({
+                            "input_tokens": in_tokens,
+                            "output_tokens": out_tokens,
+                            "total_tokens": total_tokens,
+                            "estimated_cost": cost,
+                            "created_at": datetime.datetime.utcnow().isoformat()
+                        }).execute()
+            except Exception as db_err:
+                print(f"⚠️ Token Save Error: {db_err}")
+
             return response, None
             
         except Exception as e:
@@ -309,3 +333,30 @@ def get_page_content(subject: str, grade: str, medium: str, category: str, page:
         return {"content": "Page not found in database."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# 🔥 NEW ENDPOINT FOR DASHBOARD STATS
+@app.get("/admin/token-stats")
+def get_token_stats(filter: str = "Monthly"):
+    try:
+        now = datetime.datetime.utcnow()
+        if filter.lower() == 'weekly':
+            start_date = now - datetime.timedelta(days=7)
+        elif filter.lower() == 'daily':
+            start_date = now - datetime.timedelta(days=1)
+        else: # monthly
+            start_date = now - datetime.timedelta(days=30)
+            
+        res = supabase.table("token_usage").select("*").gte("created_at", start_date.isoformat()).execute()
+        
+        total_tokens = sum(item.get("total_tokens", 0) for item in res.data)
+        total_cost = sum(item.get("estimated_cost", 0.0) for item in res.data)
+        
+        return {
+            "summary": {
+                "totalTokens": total_tokens,
+                "totalCost": total_cost
+            }
+        }
+    except Exception as e:
+        print(f"⚠️ Token Stats Error: {e}")
+        return {"summary": {"totalTokens": 0, "totalCost": 0.0}}

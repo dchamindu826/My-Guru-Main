@@ -368,7 +368,7 @@ export default function Chat() {
             {msg.role === 'ai' ? <div className={`w-full h-full rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center`}><Bot size={16} /></div> : user?.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full" /> : <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">{(user?.email || "U").charAt(0).toUpperCase()}</div>}
         </div>
 
-        <div className={`my-guru-font max-w-[85%] px-5 py-4 rounded-2xl font-medium leading-[32px] shadow-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-[#212121] text-white rounded-tr-sm' : 'bg-[#111] border border-white/5 text-gray-200 rounded-tl-sm'}`}>
+        <div className={`my-guru-font max-w-[90%] px-1 py-4 md:px-3 md:py-4 rounded-2xl text-[10px] md:text-[10px] leading-relaxed md:leading-[20px] tracking-wide shadow-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-[#212121] text-white rounded-tr-sm' : 'bg-[#111] border border-white/5 text-gray-200 rounded-tl-sm'}`}>
     {msg.content}
 </div>
 

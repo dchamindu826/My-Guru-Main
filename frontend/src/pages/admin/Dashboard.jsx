@@ -14,20 +14,19 @@ const COLORS = ['#3b82f6', '#fbbf24', '#10b981', '#f97316'];
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
-  const [recentFeedbacks, setRecentFeedbacks] = useState([]); // <-- New State
+  const [recentFeedbacks, setRecentFeedbacks] = useState([]);
+  const [tokenStats, setTokenStats] = useState({ totalTokens: 0, totalCost: 0 }); // <-- New State
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('Monthly');
 
+  // Fetch Node Backend Data
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. Fetch Stats
         const statsRes = await api.get('/admin/stats');
         setStats(statsRes.data);
 
-        // 2. Fetch Recent Feedbacks (Limit 5)
-        const fbRes = await api.get('/feedbacks?page=1'); // Backend pagination handles limit
-        // Assuming backend returns { data: [...] }
+        const fbRes = await api.get('/feedbacks?page=1'); 
         setRecentFeedbacks(fbRes.data.data ? fbRes.data.data.slice(0, 5) : []); 
 
       } catch (error) {
@@ -38,6 +37,23 @@ export default function Dashboard() {
     };
     fetchData();
   }, []);
+
+  // Fetch Token Stats from Python AI Backend based on filter
+  useEffect(() => {
+    const fetchTokenStats = async () => {
+      try {
+        const tokenRes = await api.get(`/admin/token-stats?filter=${timeRange}`);
+        
+        // tokenRes.json() අයින් කළා. කෙලින්ම data එක ගන්නවා.
+        if (tokenRes.data && tokenRes.data.summary) {
+            setTokenStats(tokenRes.data.summary);
+        }
+      } catch (error) {
+        console.error("Token Stats Error:", error);
+      }
+    };
+    fetchTokenStats();
+  }, [timeRange]);
 
   if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader className="animate-spin text-amber-500" size={40}/></div>;
 
@@ -70,7 +86,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
         <StatCard title="Total Revenue" value={`Rs. ${stats?.totalRevenue.toLocaleString()}`} icon={<DollarSign />} color="text-green-400" sub="Verified Payments" />
         <StatCard title="Active Students" value={stats?.studentCount} icon={<Users />} color="text-blue-400" sub="Registered Profiles" />
-        <StatCard title="API Usage" value="0 Req" icon={<Code />} color="text-purple-400" sub="Coming Soon" />
+        <StatCard title="API Tokens" value={tokenStats.totalTokens.toLocaleString()} icon={<Code />} color="text-purple-400" sub={`${timeRange} Usage`} />
         <StatCard title="Pending Approvals" value={stats?.pendingCount} icon={<AlertCircle />} color="text-amber-500" sub="Action Required" />
       </div>
 
@@ -190,14 +206,14 @@ export default function Dashboard() {
             </div>
         </div>
 
-        {/* API Sales Overview */}
+        {/* Gemini API Usage & Cost Overview */}
         <div className="bg-[#111] border border-white/10 rounded-2xl p-6">
-             <h3 className="text-lg font-bold mb-6 flex items-center gap-2"><Code size={18} className="text-purple-400"/> API Sales Overview</h3>
+             <h3 className="text-lg font-bold mb-6 flex items-center gap-2"><Code size={18} className="text-purple-400"/> Gemini API Usage & Cost</h3>
              <div className="space-y-6">
                 <div className="flex justify-between items-center p-4 bg-purple-900/10 border border-purple-500/20 rounded-xl">
                     <div>
-                        <p className="text-xs text-purple-400 font-bold uppercase">This Month</p>
-                        <p className="text-2xl font-black text-white">Rs. 0</p>
+                        <p className="text-xs text-purple-400 font-bold uppercase">{timeRange} Cost</p>
+                        <p className="text-2xl font-black text-white">${tokenStats.totalCost.toFixed(4)}</p>
                     </div>
                     <div className="h-10 w-10 bg-purple-500 rounded-lg flex items-center justify-center text-black font-bold">
                         <DollarSign size={20} />
@@ -205,12 +221,15 @@ export default function Dashboard() {
                 </div>
                 
                 <div className="space-y-2">
-                    <p className="text-xs text-gray-500 font-bold uppercase">Top Clients</p>
-                    <p className="text-sm text-gray-500 italic">No API clients yet.</p>
+                    <p className="text-xs text-gray-500 font-bold uppercase">Tokens Used ({timeRange})</p>
+                    <p className="text-sm text-gray-300 font-bold">{tokenStats.totalTokens.toLocaleString()} Tokens</p>
                 </div>
 
-                <button className="w-full py-3 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition text-sm">
-                    Manage API Keys
+                <button 
+                  onClick={() => setTimeRange(prev => prev)} 
+                  className="w-full py-3 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition text-sm"
+                >
+                    Refresh Usage Stats
                 </button>
              </div>
         </div>

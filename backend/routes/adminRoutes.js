@@ -1,58 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const supabase = require('../config/supabase');
+const supabase = require('../config/supabase'); // Supabase Import එක
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken'); // 🔥 MISSING IMPORT ADDED
-
-
-
-// --- 3. GET DASHBOARD STATS ---
-router.get('/stats', async (req, res) => {
-    try {
-        // 1. Get Total Students
-        const { count: studentCount, error: err1 } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true });
-
-        // 2. Get Revenue & Pending Approvals
-        const { data: payments, error: err2 } = await supabase
-            .from('payments')
-            .select('amount, status');
-
-        if (err1 || err2) throw (err1 || err2);
-
-        const totalRevenue = payments
-            .filter(p => p.status === 'approved')
-            .reduce((sum, p) => sum + (p.amount || 0), 0);
-
-        const pendingCount = payments.filter(p => p.status === 'pending').length;
-
-        // Dummy Data for Chart (Danata mehema yawamu)
-        const chartData = [
-            { name: 'Jan', student: 400, api: 240 },
-            { name: 'Feb', student: 300, api: 139 },
-            { name: 'Mar', student: 200, api: 980 },
-        ];
-
-        const userDistribution = [
-            { name: 'Free', value: studentCount || 0 },
-            { name: 'Scholar', value: 0 },
-            { name: 'Genius', value: 0 },
-        ];
-
-        res.json({
-            studentCount: studentCount || 0,
-            totalRevenue,
-            pendingCount,
-            chartData,
-            userDistribution
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: error.message });
-    }
-});
+const jwt = require('jsonwebtoken'); 
+const moment = require('moment'); // npm install moment කරගන්න අමතක කරන්න එපා
 
 // ==========================================
 // 1. ADMIN MANAGEMENT
@@ -137,13 +88,108 @@ router.post('/login', async (req, res) => {
         });
 
     } catch (err) {
-        console.error("Login Error:", err); // Log the actual error to console
+        console.error("Login Error:", err); 
         res.status(500).json({ error: "Server Error" });
     }
 });
 
 // ==========================================
-// 2. KNOWLEDGE BASE (RAG DATA)
+// 2. GET DASHBOARD STATS
+// ==========================================
+
+router.get('/stats', async (req, res) => {
+    try {
+        // 1. Get Total Students
+        const { count: studentCount, error: err1 } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true });
+
+        // 2. Get Revenue & Pending Approvals
+        const { data: payments, error: err2 } = await supabase
+            .from('payments')
+            .select('amount, status');
+
+        if (err1 || err2) throw (err1 || err2);
+
+        const totalRevenue = payments
+            .filter(p => p.status === 'approved')
+            .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+        const pendingCount = payments.filter(p => p.status === 'pending').length;
+
+        // Dummy Data for Chart
+        const chartData = [
+            { name: 'Jan', student: 400, api: 240 },
+            { name: 'Feb', student: 300, api: 139 },
+            { name: 'Mar', student: 200, api: 980 },
+        ];
+
+        const userDistribution = [
+            { name: 'Free', value: studentCount || 0 },
+            { name: 'Scholar', value: 0 },
+            { name: 'Genius', value: 0 },
+        ];
+
+        res.json({
+            studentCount: studentCount || 0,
+            totalRevenue,
+            pendingCount,
+            chartData,
+            userDistribution
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ==========================================
+// 3. GET TOKEN STATS (SUPABASE)
+// ==========================================
+
+router.get('/token-stats', async (req, res) => {
+    try {
+        const { filter } = req.query; // 'Daily', 'Weekly' or 'Monthly'
+        
+        let startDate;
+        if (filter === 'Weekly') {
+            startDate = moment().subtract(7, 'days').toISOString();
+        } else if (filter === 'Daily') {
+            startDate = moment().subtract(1, 'days').toISOString();
+        } else {
+            // Default - Monthly
+            startDate = moment().subtract(30, 'days').toISOString();
+        }
+
+        // Supabase එකෙන් Date Range එකට අදාළ Data ටික ගන්නවා
+        const { data: tokenData, error } = await supabase
+            .from('token_usage')
+            .select('*')
+            .gte('created_at', startDate);
+
+        if (error) throw error;
+
+        // ගණනය කිරීම් (Total Tokens & Total Cost)
+        const summary = tokenData.reduce((acc, curr) => {
+            acc.totalTokens += (curr.total_tokens || 0);
+            acc.totalCost += (curr.estimated_cost || 0);
+            return acc;
+        }, { totalTokens: 0, totalCost: 0 });
+
+        res.json({
+            success: true,
+            summary: summary
+        });
+
+    } catch (error) {
+        console.error("Token Stats API Error:", error);
+        res.status(500).json({ success: false, message: 'Server Error' });
+    }
+});
+
+// ==========================================
+// 4. KNOWLEDGE BASE (RAG DATA)
 // ==========================================
 
 // Get Summary (Fetches ALL pages using Loop)

@@ -35,7 +35,9 @@ async function getMediaBase64(mediaId) {
 // Helper: Send Text Message
 async function sendWhatsAppMessage(to, text) {
     try {
-        await axios({
+        console.log(`[WhatsApp] Attempting to send message to: ${to}`); // 🔥 Added Log
+        
+        const response = await axios({
             method: 'POST',
             url: `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
             headers: {
@@ -50,15 +52,21 @@ async function sendWhatsAppMessage(to, text) {
                 text: { preview_url: false, body: text }
             }
         });
+        
+        console.log(`[WhatsApp] ✅ Message Sent Successfully! ID: ${response.data.messages[0].id}`); // 🔥 Added Log
+        
     } catch (error) {
-        console.error("WhatsApp Text Error:", error.response?.data || error.message);
+        // 🔥 Updated to catch deep WhatsApp API errors
+        console.error("❌ WhatsApp Text Error details:", JSON.stringify(error.response?.data || error.message, null, 2));
     }
 }
 
 // Helper: Send Interactive Buttons (For Medium Selection)
 async function sendMediumSelectionButtons(to) {
     try {
-        await axios({
+        console.log(`[WhatsApp] Attempting to send Buttons to: ${to}`); // 🔥 Added Log
+        
+        const response = await axios({
             method: 'POST',
             url: `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
             headers: {
@@ -85,8 +93,12 @@ async function sendMediumSelectionButtons(to) {
                 }
             }
         });
+        
+        console.log(`[WhatsApp] ✅ Buttons Sent Successfully! ID: ${response.data.messages[0].id}`); // 🔥 Added Log
+        
     } catch (error) {
-        console.error("WhatsApp Button Error:", error.response?.data || error.message);
+        // 🔥 Updated to catch deep WhatsApp API errors
+        console.error("❌ WhatsApp Button Error details:", JSON.stringify(error.response?.data || error.message, null, 2));
     }
 }
 
@@ -111,7 +123,6 @@ router.post('/webhook', async (req, res) => {
     try {
         let body = req.body;
         
-        // 🔥 මේ අලුත් පේළිය මෙතනින් දාන්න 🔥
         console.log("📩 Incoming WhatsApp Webhook:", JSON.stringify(body, null, 2));
         
         if (body.object === 'whatsapp_business_account') {

@@ -3,27 +3,27 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { 
   Send, Menu, X, Image as ImageIcon, Bot, 
-  Zap, LogOut, Crown, Infinity, BookOpen, Trash2, GraduationCap, ChevronRight, MessageSquare, Sparkles, Globe, Smile, Search, Layers
+  Zap, LogOut, Crown, Infinity, BookOpen, Trash2, GraduationCap, ChevronRight, MessageSquare, Sparkles, Search, Layers, Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api'; 
 import logo from '../assets/logo.png'; 
 
 const SUBJECT_THEMES = {
-    "Science": "from-blue-600 to-cyan-500",
-    "Mathematics": "from-red-600 to-orange-500",
-    "History": "from-amber-600 to-yellow-500",
-    "Buddhism": "from-orange-500 to-amber-400",
-    "Sinhala": "from-emerald-600 to-green-500",
-    "English": "from-purple-600 to-pink-500",
-    "ICT": "from-indigo-600 to-blue-500",
-    "Commerce": "from-teal-600 to-emerald-500",
-    "Health": "from-rose-500 to-red-400",
-    "Geography": "from-green-600 to-lime-500",
-    "Civic": "from-slate-600 to-gray-500",
-    "Media": "from-violet-600 to-purple-500",
-    "Tamil": "from-fuchsia-600 to-pink-500",
-    "Agriculture": "from-lime-500 to-green-600"
+  "Science": "from-blue-600 to-cyan-500",
+  "Mathematics": "from-red-600 to-orange-500",
+  "History": "from-amber-600 to-yellow-500",
+  "Buddhism": "from-orange-500 to-amber-400",
+  "Sinhala": "from-emerald-600 to-green-500",
+  "English": "from-purple-600 to-pink-500",
+  "ICT": "from-indigo-600 to-blue-500",
+  "Commerce": "from-teal-600 to-emerald-500",
+  "Health": "from-rose-500 to-red-400",
+  "Geography": "from-green-600 to-lime-500",
+  "Civic": "from-slate-600 to-gray-500",
+  "Media": "from-violet-600 to-purple-500",
+  "Tamil": "from-fuchsia-600 to-pink-500",
+  "Agriculture": "from-lime-500 to-green-600"
 };
 
 export default function Chat() {
@@ -34,6 +34,7 @@ export default function Chat() {
   const [input, setInput] = useState(""); 
   const [userPlan, setUserPlan] = useState('free'); 
   const [isUnlimited, setIsUnlimited] = useState(false);
+  const [maxCredits, setMaxCredits] = useState(3);
   const [credits, setCredits] = useState(3);
   const [isSidebarOpen, setSidebarOpen] = useState(true); 
   const [isTyping, setIsTyping] = useState(false);
@@ -43,7 +44,7 @@ export default function Chat() {
   const [medium, setMedium] = useState("Sinhala");
 
   const [sessions, setSessions] = useState(() => {
-      const saved = localStorage.getItem('myguru_sessions');
+      const saved = localStorage.getItem(`myguru_sessions_${user?.uid || 'guest'}`);
       return saved ? JSON.parse(saved) : {};
   });
 
@@ -53,19 +54,7 @@ export default function Chat() {
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
-  // 🔥 AI Loading Animation States
   const [loadingStep, setLoadingStep] = useState(0);
-
-  useEffect(() => {
-      let interval;
-      if (isTyping) {
-          setLoadingStep(0);
-          interval = setInterval(() => {
-              setLoadingStep((prev) => (prev + 1) % 4);
-          }, 2000); // තත්පර 2න් 2කට text එක මාරු වෙනවා
-      }
-      return () => clearInterval(interval);
-  }, [isTyping]);
 
   const loadingTexts = [
       { icon: <Search size={14} className="text-blue-400"/>, text: "ප්‍රශ්නය විශ්ලේෂණය කරමින්..." },
@@ -75,8 +64,19 @@ export default function Chat() {
   ];
 
   useEffect(() => {
-      localStorage.setItem('myguru_sessions', JSON.stringify(sessions));
-  }, [sessions]);
+      let interval;
+      if (isTyping) {
+          setLoadingStep(0);
+          interval = setInterval(() => {
+              setLoadingStep((prev) => (prev + 1) % 4);
+          }, 2000); 
+      }
+      return () => clearInterval(interval);
+  }, [isTyping]);
+
+  useEffect(() => {
+      if(user?.uid) localStorage.setItem(`myguru_sessions_${user.uid}`, JSON.stringify(sessions));
+  }, [sessions, user]);
 
   const currentMessages = activeSubject ? (sessions[activeSubject] || []) : [];
   const activeTheme = activeSubject ? SUBJECT_THEMES[activeSubject] : "from-gray-700 to-gray-600";
@@ -86,15 +86,39 @@ export default function Chat() {
     const fetchUserPlan = async () => {
         try {
             const userId = user.uid || user.id;
+            
             const res = await api.get(`/payments/user/${userId}`);
             const approvedOrder = res.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).find(o => o.status === 'approved');
 
+            const today = new Date().toDateString();
+            const storedUsageStr = localStorage.getItem(`myguru_usage_${userId}`);
+            let usageData = storedUsageStr ? JSON.parse(storedUsageStr) : { date: today, used: 0, total_used: 0 };
+            
+            if (usageData.date !== today) {
+                usageData = { date: today, used: 0, total_used: usageData.total_used };
+                localStorage.setItem(`myguru_usage_${userId}`, JSON.stringify(usageData));
+            }
+
             if (approvedOrder) {
                 const pkgName = approvedOrder.package_name.toLowerCase();
-                if (pkgName.includes('genius')) { setUserPlan('genius'); setIsUnlimited(true); setCredits(9999); }
-                else if (pkgName.includes('scholar')) { setUserPlan('scholar'); setIsUnlimited(false); setCredits(100); }
-                else { setUserPlan('free'); setIsUnlimited(false); }
-            } else { setUserPlan('free'); setIsUnlimited(false); }
+                if (pkgName.includes('genius')) { 
+                    setUserPlan('genius'); 
+                    setIsUnlimited(true); 
+                    setCredits("Unlimited"); 
+                }
+                else if (pkgName.includes('scholar')) { 
+                    setUserPlan('scholar'); 
+                    setIsUnlimited(false); 
+                    const totalAllowed = 100; 
+                    setMaxCredits(totalAllowed);
+                    setCredits(totalAllowed - usageData.total_used); 
+                }
+            } else { 
+                setUserPlan('free'); 
+                setIsUnlimited(false); 
+                setMaxCredits(3);
+                setCredits(Math.max(0, 3 - usageData.used)); 
+            }
         } catch (error) { console.error("Plan Error:", error); }
     };
     fetchUserPlan();
@@ -104,22 +128,18 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [currentMessages, isTyping, activeSubject]);
 
-  // --- HANDLERS ---
   const handleSubjectSelect = (subject) => {
       setActiveSubject(subject);
       setSidebarOpen(false); 
       
       setSessions(prev => {
           const subjectHistory = prev[subject] || [];
-          // 🔥 Only add welcome message if history is empty
           if (subjectHistory.length === 0) {
               const firstName = user?.displayName?.split(' ')[0] || 'පුතේ';
-              
-              // 🔥 YOUR CUSTOM WELCOME MESSAGE
               const welcomeMsg = {
                   id: 'init-welcome',
                   role: 'ai',
-                  content: `ආයුබෝවන් ${firstName}! 👋\n\nමම My Guru. ලංකාවේ පළවෙනි AI ගුරුවරයා 🎓\n\nඅද අපි ${subject} පාඩම පටන් ගමු. 📚\n\nඔයාට තියෙන ඕනෑම ප්‍රශ්නයක් මගෙන් අහන්න. මම ලෑස්තියි ඔයාට සරලව කියලා දෙන්න.\n\nසිංහල, English, Tamil හෝ Singlish වලින් අහන්න.\n\nඅපි වැඩේ පටන් ගමු! 🚀`,
+                  content: `ආයුබෝවන් ${firstName}! 👋\n\nමම My Guru. ලංකාවේ පළවෙනි AI ගුරුවරයා 🎓\n\nඅද අපි ${subject} පාඩම පටන් ගමු. 📚\n\nඔයාට තියෙන ඕනෑම ප්‍රශ්නයක් මගෙන් අහන්න. මම ලෑස්තියි ඔයාට සරලව කියලා දෙන්න.`,
                   timestamp: new Date()
               };
               return { ...prev, [subject]: [welcomeMsg] };
@@ -153,34 +173,59 @@ export default function Chat() {
     reader.onerror = error => reject(error);
   });
 
+  const updateUsage = () => {
+      if (isUnlimited) return;
+      const userId = user?.uid || user?.id;
+      const storedUsageStr = localStorage.getItem(`myguru_usage_${userId}`);
+      let usageData = storedUsageStr ? JSON.parse(storedUsageStr) : { date: new Date().toDateString(), used: 0, total_used: 0 };
+      
+      usageData.used += 1; 
+      usageData.total_used += 1; 
+      
+      localStorage.setItem(`myguru_usage_${userId}`, JSON.stringify(usageData));
+      
+      if (userPlan === 'free') {
+          setCredits(Math.max(0, 3 - usageData.used));
+      } else {
+          setCredits(Math.max(0, maxCredits - usageData.total_used));
+      }
+  };
+
   const handleSend = async (e) => {
     e.preventDefault();
     if ((!input.trim() && !selectedImage) || !activeSubject) return;
 
     if (!isUnlimited && credits <= 0) {
-        addMessageToSession(activeSubject, { role: 'ai', content: "🛑 අද දවසේ ප්‍රශ්න ප්‍රමාණය ඉවරයි පුතේ. Unlimited Plan එක Upgrade කරන්න.", isSystem: true });
+        addMessageToSession(activeSubject, { 
+            id: Date.now(), 
+            role: 'ai', 
+            content: userPlan === 'free' 
+                ? "🛑 අද දවසේ ඔයාට අහන්න පුළුවන් ප්‍රශ්න ප්‍රමාණය (3/3) ඉවරයි පුතේ. තව ප්‍රශ්න අහන්න අපේ Unlimited Plan එකකට Upgrade කරන්න. 👇\n\n[Upgrade Now](/plans)"
+                : "🛑 ඔයාගේ පැකේජයේ ප්‍රශ්න ප්‍රමාණය අවසන් වී ඇත. කරුණාකර නැවත Upgrade කරන්න.", 
+            isSystem: true 
+        });
         return;
     }
 
-    // 1. පින්තූරයක් තියෙනවා නම්, මුලින්ම ඒක Base64 වලට හරවගන්නවා
     let base64String = null;
+    let imgPrevUrl = imagePreview; 
+
     if (selectedImage) {
         base64String = await toBase64(selectedImage);
     }
 
-    // 2. Chat History එකට දාන්නේ Blob URL එක (imagePreview) නෙමෙයි, Base64 String එකයි!
     const userMsg = { 
         id: Date.now(), 
         role: 'user', 
         content: input, 
-        image: base64String, // 🔥 Fix: මෙතන තමයි වෙනස් කළේ
+        image: imgPrevUrl, 
         timestamp: new Date() 
     };
     
     addMessageToSession(activeSubject, userMsg);
     
     setInput("");
-    clearImage(); // Input එකේ තියෙන පින්තූරේ අයින් කරනවා
+    clearImage();
     setIsTyping(true);
 
     try {
@@ -189,9 +234,10 @@ export default function Chat() {
             payload.image_data = base64String;
         }
 
-        const res = await fetch("https://myguru.lumi-automation.com/brain/chat", {
+        // 🔥 URL එක හරියටම myguru.lumi-automation.com කියලා හැදුවා (api. කෑල්ල අයින් කරා)
+        const res = await fetch("https://myguru.lumi-automation.com/brain/chat", { 
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-api-key": "sk_7MYoNP9bT6l_aUKh8svMJEMFTY0vY7uv" },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
 
@@ -202,14 +248,15 @@ export default function Chat() {
             id: Date.now() + 1, 
             role: 'ai', 
             content: data.answer, 
-            image: data.image?.image_url, 
+            // 🔥 Bot ගෙන් එන image එක save කරගන්නේ නෑ
+            image: null, 
             timestamp: new Date() 
         });
 
-        if (data.credits_left !== undefined && data.credits_left !== "Unlimited") { setCredits(data.credits_left); }
+        updateUsage();
 
     } catch (e) {
-        addMessageToSession(activeSubject, { id: Date.now(), role: 'ai', content: "System busy. පොඩ්ඩක් ඉඳලා ආයේ ට්‍රයි කරන්න." });
+        addMessageToSession(activeSubject, { id: Date.now(), role: 'ai', content: "⚠️ System busy. පොඩ්ඩක් ඉඳලා ආයේ ට්‍රයි කරන්න." });
     } finally { setIsTyping(false); }
   };
 
@@ -276,13 +323,14 @@ export default function Chat() {
                     <p className={`text-[10px] font-bold uppercase flex items-center gap-1 ${isUnlimited ? 'text-amber-500' : 'text-gray-500'}`}>{isUnlimited ? <><Crown size={10} /> Genius Plan</> : 'Student Plan'}</p>
                 </div>
             </div>
+
             {isUnlimited ? (
                 <div className="mb-3 bg-gradient-to-r from-amber-500/20 to-yellow-600/20 rounded-xl p-3 border border-amber-500/30 flex items-center gap-2 justify-center text-amber-500 font-black text-xs tracking-wide"><Infinity size={16} /> <span>UNLIMITED ACCESS</span></div>
             ) : (
                 <div className="mb-3 bg-[#111] rounded-xl p-3 border border-white/5 cursor-pointer hover:border-white/10 transition" onClick={() => navigate('/plans')}>
-                    <div className="flex justify-between text-xs mb-2 text-gray-400 font-medium"><span>Daily Limit</span><span className="text-white font-bold">{credits}/3</span></div>
-                    <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min((credits/3)*100, 100)}%` }} className="bg-amber-500 h-full"/></div>
-                    <p className="text-[10px] text-amber-500 mt-2.5 text-center font-bold flex items-center justify-center gap-1">Upgrade <Zap size={10} /></p>
+                    <div className="flex justify-between text-xs mb-2 text-gray-400 font-medium"><span>{userPlan === 'free' ? 'Daily Free Limit' : 'Package Limit'}</span><span className={`font-bold ${credits === 0 ? 'text-red-500' : 'text-white'}`}>{credits}/{maxCredits} Left</span></div>
+                    <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min((credits/maxCredits)*100, 100)}%` }} className={`h-full ${credits === 0 ? 'bg-red-500' : 'bg-amber-500'}`}/></div>
+                    <p className="text-[10px] text-amber-500 mt-2.5 text-center font-bold flex items-center justify-center gap-1">Upgrade To Premium <Zap size={10} /></p>
                 </div>
             )}
             <button onClick={() => { logout(); navigate('/'); }} className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 text-red-400/80 hover:bg-red-500/10 hover:text-red-400 transition"><LogOut size={14} /> Log Out</button>
@@ -331,7 +379,6 @@ export default function Chat() {
                 <h1 className="text-3xl md:text-4xl font-black text-white mb-4">ආයුබෝවන් <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">{user?.displayName?.split(' ')[0] || 'පුතේ'}!</span> 👋</h1>
                 <p className="text-gray-400 max-w-md mb-8 leading-relaxed">මම ලංකාවේ පළවෙනි AI ගුරුවරයා. පටන් ගන්න පහත පියවර අනුගමනය කරන්න.</p>
                 
-                {/* 🔥 REDESIGNED INSTRUCTION GUIDE */}
                 <div className="grid gap-4 max-w-md w-full text-left">
                     <div className="bg-[#111] p-4 rounded-2xl border border-white/5 flex items-center gap-4 group hover:border-amber-500/30 transition cursor-pointer" onClick={() => setSidebarOpen(true)}>
                         <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 font-bold text-lg group-hover:scale-110 transition">1</div>
@@ -362,49 +409,88 @@ export default function Chat() {
             <>
                 <div className="flex-1 overflow-y-auto px-4 pt-24 pb-48 md:px-32 lg:px-48 space-y-6 custom-scrollbar">
                     {currentMessages.map((msg) => (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-        
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${msg.role === 'ai' ? `bg-[#111] border-white/10 text-white` : 'bg-transparent border-transparent'}`}>
-            {msg.role === 'ai' ? <div className={`w-full h-full rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center`}><Bot size={16} /></div> : user?.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full" /> : <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">{(user?.email || "U").charAt(0).toUpperCase()}</div>}
-        </div>
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                            
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${msg.role === 'ai' ? `bg-[#111] border-white/10 text-white` : 'bg-transparent border-transparent'}`}>
+                                {msg.role === 'ai' ? <div className={`w-full h-full rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center`}><Bot size={16} /></div> : user?.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full" /> : <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">{(user?.email || "U").charAt(0).toUpperCase()}</div>}
+                            </div>
 
-        <div className={`my-guru-font max-w-[90%] px-1 py-4 md:px-3 md:py-4 rounded-2xl text-[10px] md:text-[10px] leading-relaxed md:leading-[20px] tracking-wide shadow-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-[#212121] text-white rounded-tr-sm' : 'bg-[#111] border border-white/5 text-gray-200 rounded-tl-sm'}`}>
-    {msg.content}
-</div>
+                            <div className={`my-guru-font max-w-[90%] px-4 py-3 md:px-5 md:py-4 rounded-2xl text-[15px] shadow-sm flex flex-col gap-2 ${msg.role === 'user' ? 'bg-[#212121] text-white rounded-tr-sm' : 'bg-[#111] border border-white/5 text-gray-200 rounded-tl-sm'}`}>
+                                
+                                {/* 🔥 IMAGE RENDER: ඔයා යවන පින්තූරේ විතරයි පෙන්නන්නේ */}
+                                {msg.image && msg.role === 'user' && (
+                                    <div className="relative group">
+                                        <img src={msg.image} alt="Attached" className="max-w-xs md:max-w-sm rounded-xl border border-white/10 shadow-lg mb-2" />
+                                    </div>
+                                )}
+                                
+                                {/* TEXT CONTENT: ලයින් ස්පේස් අඩු කරලා (leading-snug) */}
+                                {msg.content && (
+                                    <span className="whitespace-pre-wrap leading-[1.3]">{msg.content}</span>
+                                )}
 
-    </motion.div>
-))}
+                            </div>
+                        </motion.div>
+                    ))}
                     {isTyping && (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
-        <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center shadow-lg`}>
-            <Bot size={16} className="text-white animate-pulse"/>
-        </div>
-        <div className="bg-[#111] border border-white/5 px-5 py-3.5 rounded-2xl rounded-tl-sm flex items-center gap-3 shadow-sm">
-            <div className="animate-spin-slow">
-                {loadingTexts[loadingStep].icon}
-            </div>
-            <span className="text-[13px] text-gray-400 font-medium animate-pulse tracking-wide">
-                {loadingTexts[loadingStep].text}
-            </span>
-        </div>
-    </motion.div>
-)}
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
+                            <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center shadow-lg`}>
+                                <Bot size={16} className="text-white animate-pulse"/>
+                            </div>
+                            <div className="bg-[#111] border border-white/5 px-5 py-3.5 rounded-2xl rounded-tl-sm flex items-center gap-3 shadow-sm">
+                                <div className="animate-spin-slow">
+                                    {loadingTexts[loadingStep].icon}
+                                </div>
+                                <span className="text-[13px] text-gray-400 font-medium animate-pulse tracking-wide">
+                                    {loadingTexts[loadingStep].text}
+                                </span>
+                            </div>
+                        </motion.div>
+                    )}
                     <div ref={messagesEndRef} />
                 </div>
 
+                {/* Input Area */}
                 <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-black via-black to-transparent z-20">
                     <div className="max-w-3xl mx-auto">
                         {imagePreview && (
                             <div className="mb-2 relative inline-block">
-                                <img src={imagePreview} className="h-16 rounded-lg border border-white/20 shadow-lg" alt="Upload" />
-                                <button onClick={clearImage} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition"><X size={12}/></button>
+                                <img src={imagePreview} className="h-20 rounded-xl border-2 border-amber-500/50 shadow-lg object-cover" alt="Upload Preview" />
+                                <button onClick={clearImage} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition z-10"><X size={14}/></button>
                             </div>
                         )}
-                        <div className="relative flex items-end gap-2 p-1.5 bg-[#111] border border-white/10 rounded-[24px] shadow-2xl transition-all focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)]">
+                        
+                        <div className={`relative flex items-end gap-2 p-1.5 bg-[#111] border rounded-[24px] shadow-2xl transition-all ${(!isUnlimited && credits <= 0) ? 'border-red-500/50 bg-red-900/10 opacity-80' : 'border-white/10 focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)]'}`}>
+                            
                             <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
-                            <button onClick={() => fileInputRef.current?.click()} className="p-3 mb-0.5 rounded-full text-gray-400 hover:text-white hover:bg-white/5 transition"><ImageIcon size={20} /></button>
-                            <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }} placeholder={`Ask anything in ${medium}...`} className="w-full bg-transparent resize-none focus:outline-none py-3.5 px-2 text-[15px] text-white placeholder-gray-600 max-h-32 custom-scrollbar" rows={1} style={{ minHeight: '50px' }} />
-                            <button onClick={handleSend} disabled={(!input.trim() && !selectedImage) || isTyping} className={`p-3 mb-0.5 rounded-full transition shadow-lg ${input.trim() || selectedImage ? `bg-gradient-to-r ${activeTheme} text-white hover:scale-105` : 'bg-white/5 text-gray-600 cursor-not-allowed'}`}><Send size={18} fill={input.trim() ? "currentColor" : "none"} /></button>
+                            
+                            <button 
+                                onClick={() => fileInputRef.current?.click()} 
+                                disabled={(!isUnlimited && credits <= 0) || isTyping}
+                                className={`p-3 mb-0.5 rounded-full transition ${(!isUnlimited && credits <= 0) ? 'text-red-500/50 cursor-not-allowed' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                            >
+                                <ImageIcon size={20} />
+                            </button>
+                            
+                            <textarea 
+                                ref={textareaRef} 
+                                value={input} 
+                                onChange={(e) => setInput(e.target.value)} 
+                                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }} 
+                                placeholder={(!isUnlimited && credits <= 0) ? "Your Daily Limit Reached. Upgrade Plan." : `Ask anything in ${medium}...`} 
+                                disabled={(!isUnlimited && credits <= 0) || isTyping}
+                                className="w-full bg-transparent resize-none focus:outline-none py-3.5 px-2 text-[15px] text-white placeholder-gray-600 max-h-32 custom-scrollbar disabled:cursor-not-allowed" 
+                                rows={1} 
+                                style={{ minHeight: '50px' }} 
+                            />
+                            
+                            <button 
+                                onClick={handleSend} 
+                                disabled={(!input.trim() && !selectedImage) || isTyping || (!isUnlimited && credits <= 0)} 
+                                className={`p-3 mb-0.5 rounded-full transition shadow-lg ${(!isUnlimited && credits <= 0) ? 'bg-red-500/20 text-red-500 cursor-not-allowed' : (input.trim() || selectedImage) ? `bg-gradient-to-r ${activeTheme} text-white hover:scale-105` : 'bg-white/5 text-gray-600 cursor-not-allowed'}`}
+                            >
+                                {(!isUnlimited && credits <= 0) ? <Lock size={18} /> : <Send size={18} fill={input.trim() ? "currentColor" : "none"} />}
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -73,8 +73,8 @@ def safe_google_api_call(contents, is_json=False):
                 contents=contents,
                 config=config
             )
-
-            # 🔥 TOKEN TRACKING & COST CALCULATION
+            
+            # 🔥 TOKEN TRACKING & COST CALCULATION (Gemini 2.0 Flash Rates)
             try:
                 usage = getattr(response, 'usage_metadata', None)
                 if usage:
@@ -83,8 +83,11 @@ def safe_google_api_call(contents, is_json=False):
                     total_tokens = getattr(usage, 'total_token_count', 0) or 0
                     
                     if total_tokens > 0:
-                        # Cost for gemini-2.0-flash / 1.5-flash standard (0.075 per 1M in, 0.30 per 1M out)
-                        cost = ((in_tokens / 1000000.0) * 0.075) + ((out_tokens / 1000000.0) * 0.30)
+                        # Cost for gemini-2.0-flash standard ($0.10 per 1M input, $0.40 per 1M output)
+                        cost = ((in_tokens / 1000000.0) * 0.10) + ((out_tokens / 1000000.0) * 0.40)
+                        
+                        # Terminal එකේ බලාගන්න Print එක
+                        print(f"💰 [Request Cost] Tokens: {total_tokens} (In: {in_tokens} | Out: {out_tokens}) | Cost: ${cost:.6f}")
                         
                         supabase.table("token_usage").insert({
                             "input_tokens": in_tokens,
@@ -109,11 +112,13 @@ def safe_google_api_call(contents, is_json=False):
             
     return None, f"All keys failed. Last error: {last_err}"
 
+# 🔥 UPDATED CHAT REQUEST MODEL
 class ChatRequest(BaseModel):
     question: str
     subject: str
     medium: str
     image_data: str | None = None
+    audio_data: str | None = None # WhatsApp Voice Notes වලට
 
 class DeleteRequest(BaseModel):
     ids: list[int]
@@ -126,7 +131,7 @@ class DeletePagesRequest(BaseModel):
     pages: list[int]
 
 # --- BRAIN LOGIC ---
-def generate_smart_answer(context, question, subject, medium, img=None):
+def generate_smart_answer(context, question, subject, medium, img=None, audio_part=None):
     context_text = ""
     if context:
         for item in context:
@@ -134,8 +139,6 @@ def generate_smart_answer(context, question, subject, medium, img=None):
             category = meta.get('category', 'unknown').upper()
             context_text += f"\n[SOURCE: {category} | Grade {meta.get('grade')}]\n{item.get('content', '')}\n---"
     
-    # 🔥 THE ABSOLUTE STRICT MASTER EXAMINER PROMPT
-    # 🔥 THE ABSOLUTE STRICT MASTER EXAMINER PROMPT (V4 - Maximum Elaboration)
     prompt = f"""
     You are 'My Guru', the Ultimate Sri Lankan School Examiner and Master Teacher. 
     You are bound by STRICT RULES. If you break them, you will fail the system.
@@ -173,8 +176,13 @@ def generate_smart_answer(context, question, subject, medium, img=None):
     """
     
     contents = [prompt]
-    if img: contents.extend([img, "Examine this image pixel by pixel. Read EVERY sub-question clearly. Answer EVERY sub-question accurately with deep elaboration based on the instructions."])
+    if img: 
+        contents.extend([img, "Examine this image pixel by pixel. Read EVERY sub-question clearly. Answer EVERY sub-question accurately with deep elaboration based on the instructions."])
     
+    # 🔥 Audio Part එකක් තියෙනවා නම් ඒකත් contents වලට දානවා
+    if audio_part:
+        contents.extend([audio_part, "Listen to this audio carefully and answer the student's question based on the audio and instructions."])
+        
     res, err = safe_google_api_call(contents)
     
     if res and hasattr(res, 'text') and res.text:
@@ -186,13 +194,12 @@ def generate_smart_answer(context, question, subject, medium, img=None):
 @app.post("/chat")
 def chat_endpoint(request: ChatRequest):
     img = None
+    audio_part = None
+    
+    # 1. Image Handling
     if request.image_data:
         try:
-            if "base64," in request.image_data: 
-                base64_str = request.image_data.split("base64,")[1]
-            else: 
-                base64_str = request.image_data
-            
+            base64_str = request.image_data.split("base64,")[1] if "base64," in request.image_data else request.image_data
             img = Image.open(io.BytesIO(base64.b64decode(base64_str)))
             if img.mode != 'RGB':
                 img = img.convert('RGB')
@@ -200,13 +207,31 @@ def chat_endpoint(request: ChatRequest):
         except Exception as e:
             print(f"⚠️ Image Load Error: {e}")
 
-    safe_question = request.question if request.question.strip() else "Answer ALL the questions in the image accurately."
+    # 2. Audio Handling (WhatsApp Voice Notes) 🔥
+    if request.audio_data:
+        try:
+            base64_audio = request.audio_data.split("base64,")[1] if "base64," in request.audio_data else request.audio_data
+            audio_bytes = base64.b64decode(base64_audio)
+            
+            # WhatsApp OGG / M4A format එකට ගැලපෙන විදිහට Part එක හදනවා
+            audio_part = types.Part.from_bytes(
+                data=audio_bytes,
+                mime_type='audio/ogg' # Default to ogg, can be changed if needed
+            )
+        except Exception as e:
+            print(f"⚠️ Audio Load Error: {e}")
+
+    safe_question = request.question if request.question.strip() else "Please analyze the provided media (image/audio) and answer accurately."
     
     kw_contents = []
-    # 🔥 EXTRACT MORE KEYWORDS INCLUDING PROPER NOUNS
+    
+    # 🔥 EXTRACT KEYWORDS FROM IMAGE, AUDIO OR TEXT
     if img:
         kw_contents.append(img)
         kw_prompt = f'Read ALL questions in the image. Extract 8-12 highly specific, unique ROOT NOUNS (නාමපද/මූලික පද) and Technical Terms that represent the core subjects. DO NOT extract common verbs or joining words. Output ONLY a strict JSON Array of strings: ["word1", "word2"]'
+    elif audio_part:
+        kw_contents.append(audio_part)
+        kw_prompt = f'Listen to the audio. Extract 8-12 highly specific, unique ROOT NOUNS (නාමපද/මූලික පද) and Technical Terms related to the core subject being discussed. Output ONLY a strict JSON Array of strings: ["word1", "word2"]'
     else:
         kw_prompt = f'Extract 8-12 highly specific ROOT NOUNS and Technical Terms from "{safe_question}". Ignore common verbs. Output ONLY a strict JSON Array of strings: ["word1", "word2"]'
         
@@ -227,7 +252,6 @@ def chat_endpoint(request: ChatRequest):
         search_terms = []
         for k in keywords:
             search_terms.append(k)
-            # 🔥 FIX: Sinhala words can be short (2 chars) so lowered the length limit
             search_terms.extend([w for w in k.split() if len(w) > 2])
             
         search_terms = list(set(search_terms))[:10] 
@@ -248,7 +272,7 @@ def chat_endpoint(request: ChatRequest):
                 continue 
 
     try:
-        ans = generate_smart_answer(ctx, safe_question, request.subject, request.medium, img)
+        ans = generate_smart_answer(ctx, safe_question, request.subject, request.medium, img, audio_part)
         return {"answer": ans}
     except Exception as final_err:
         return {"answer": f"⚠️ කේත දෝෂයක් (Code Error): {str(final_err)}"}
@@ -289,7 +313,18 @@ async def ingest_pdf(request: Request, pdf: UploadFile = File(...), grade: str =
             for i, image in enumerate(images):
                 if await request.is_disconnected(): return 
                 page_num = startPage + i
-                prompt = f"Extract all text/diagrams. Language: {medium}. Keep structure. Do NOT summarize."
+                prompt = f"""
+                You are an expert educational content extractor. Carefully read and extract ALL text, tables, and data from this image.
+                Target Language: {medium}. 
+                
+                STRICT FORMATTING RULES:
+                1. Use clear Markdown formatting.
+                2. If there is a Table in the image, strictly convert it into a Markdown Table.
+                3. Clearly bold the Question Numbers (e.g., **1 (iv) (a)**) and separate them from the answers using line breaks.
+                4. Keep the marking points and allocated marks (e.g., 0.5, 1) clearly next to the relevant answer.
+                5. If there are diagrams (like Logic Circuits), extract all text/labels logically.
+                6. DO NOT summarize. Extract every single word, note (සටහන), and mark precisely.
+                """
                 
                 success = False
                 for attempt in range(3):
@@ -333,30 +368,3 @@ def get_page_content(subject: str, grade: str, medium: str, category: str, page:
         return {"content": "Page not found in database."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-# 🔥 NEW ENDPOINT FOR DASHBOARD STATS
-@app.get("/admin/token-stats")
-def get_token_stats(filter: str = "Monthly"):
-    try:
-        now = datetime.datetime.utcnow()
-        if filter.lower() == 'weekly':
-            start_date = now - datetime.timedelta(days=7)
-        elif filter.lower() == 'daily':
-            start_date = now - datetime.timedelta(days=1)
-        else: # monthly
-            start_date = now - datetime.timedelta(days=30)
-            
-        res = supabase.table("token_usage").select("*").gte("created_at", start_date.isoformat()).execute()
-        
-        total_tokens = sum(item.get("total_tokens", 0) for item in res.data)
-        total_cost = sum(item.get("estimated_cost", 0.0) for item in res.data)
-        
-        return {
-            "summary": {
-                "totalTokens": total_tokens,
-                "totalCost": total_cost
-            }
-        }
-    except Exception as e:
-        print(f"⚠️ Token Stats Error: {e}")
-        return {"summary": {"totalTokens": 0, "totalCost": 0.0}}

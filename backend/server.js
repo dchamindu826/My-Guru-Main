@@ -19,6 +19,8 @@ app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/testimonials', require('./routes/testimonialRoutes')); // Site Testimonials
 app.use('/api/feedbacks', require('./routes/feedbackRoutes'));       // Student Issues/Widget
 app.use('/api/ingest', require('./routes/ingestRoutes'));
+app.use('/api/whatsapp', require('./routes/whatsappRoutes'));
+
 
 // 3. Bank SMS Route (For Auto-Verification)
 // app.use('/api/bank-sms', require('./routes/bankRoutes')); // Uncomment if you setup SMS App

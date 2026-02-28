@@ -11,6 +11,7 @@ import base64
 import io
 import random
 import time
+import datetime # 🔥 අලුතින් එකතු කරපු import එක
 from PIL import Image
 from pdf2image import convert_from_bytes
 from dotenv import load_dotenv
@@ -72,6 +73,32 @@ def safe_google_api_call(contents, is_json=False):
                 contents=contents,
                 config=config
             )
+            
+            # 🔥 TOKEN TRACKING & COST CALCULATION (Gemini 2.0 Flash Rates)
+            try:
+                usage = getattr(response, 'usage_metadata', None)
+                if usage:
+                    in_tokens = getattr(usage, 'prompt_token_count', 0) or 0
+                    out_tokens = getattr(usage, 'candidates_token_count', 0) or 0
+                    total_tokens = getattr(usage, 'total_token_count', 0) or 0
+                    
+                    if total_tokens > 0:
+                        # Cost for gemini-2.0-flash standard ($0.10 per 1M input, $0.40 per 1M output)
+                        cost = ((in_tokens / 1000000.0) * 0.10) + ((out_tokens / 1000000.0) * 0.40)
+                        
+                        # Terminal එකේ බලාගන්න Print එක
+                        print(f"💰 [Request Cost] Tokens: {total_tokens} (In: {in_tokens} | Out: {out_tokens}) | Cost: ${cost:.6f}")
+                        
+                        supabase.table("token_usage").insert({
+                            "input_tokens": in_tokens,
+                            "output_tokens": out_tokens,
+                            "total_tokens": total_tokens,
+                            "estimated_cost": cost,
+                            "created_at": datetime.datetime.utcnow().isoformat()
+                        }).execute()
+            except Exception as db_err:
+                print(f"⚠️ Token Save Error: {db_err}")
+
             return response, None
             
         except Exception as e:
@@ -111,28 +138,41 @@ def generate_smart_answer(context, question, subject, medium, img=None):
             context_text += f"\n[SOURCE: {category} | Grade {meta.get('grade')}]\n{item.get('content', '')}\n---"
     
     # 🔥 THE ABSOLUTE STRICT MASTER EXAMINER PROMPT
+    # 🔥 THE ABSOLUTE STRICT MASTER EXAMINER PROMPT (V4 - Maximum Elaboration)
     prompt = f"""
-    You are 'My Guru', the Ultimate Sri Lankan School Examiner and Master Teacher. Your absolute duty is to provide 100% complete, highly accurate, deeply elaborated, and beautifully structured answers.
+    You are 'My Guru', the Ultimate Sri Lankan School Examiner and Master Teacher. 
+    You are bound by STRICT RULES. If you break them, you will fail the system.
     
     SUBJECT: {subject}
     TARGET MEDIUM: {medium}
     
-    OFFICIAL CONTEXT (Marking Schemes & Textbooks):
+    OFFICIAL CONTEXT:
     {context_text if context_text else "NO CONTEXT FETCHED. YOU MUST USE YOUR VAST INTERNAL KNOWLEDGE."}
     
     STUDENT'S QUESTION:
     {question}
     
-    CRITICAL EXAMINER INSTRUCTIONS (READ CAREFULLY & FOLLOW STRICTLY OR YOU WILL BE PENALIZED):
-    1. **THE "NEVER SAY NO" RULE (CRITICAL):** You MUST answer the question perfectly. If the OFFICIAL CONTEXT contains the answer (especially Marking Schemes), prioritize it. IF THE CONTEXT DOES NOT CONTAIN THE EXACT ANSWER, YOU MUST IMMEDIATELY USE YOUR OWN EXPERT AI KNOWLEDGE TO PROVIDE A PERFECT, SYLLABUS-ALIGNED ANSWER. NEVER, EVER say "Information is not provided", "තොරතුරු සපයා නැත", or "I don't know". 
-    2. **COMPLETE COVERAGE:** Carefully read the question/image. If it contains multiple sub-parts like (i), (ii), (iii), (iv) or (අ), (ආ), (ඉ), YOU MUST ANSWER EVERY SINGLE PART. Do not skip or summarize sub-questions.
-    3. **MANDATORY ELABORATION (NO LAZY ANSWERS):** Marking schemes contain short bullet points. You are FORBIDDEN from just pasting naked bullet points. You MUST explain, describe, and elaborate on *why* and *how* for each point. If the question says "විස්තර කරන්න" (Describe), "පැහැදිලි කරන්න" (Explain), or "සාකච්ඡා කරන්න" (Discuss), you MUST write highly detailed, rich paragraphs.
-    4. **MCQ HANDLING:** If the question is a Multiple Choice Question (MCQ), clearly state the correct answer AND provide a detailed explanation of EXACTLY WHY it is correct and why the other options are wrong.
-    5. **MULTI-LANGUAGE & FORMATTING:** Answer flawlessly in the language the student requested (Sinhala, English, or Tamil). Maintain a formal, educational tone.
-       - If answering in Sinhala, ALWAYS start with: "හරි පුතේ, පිළිතුරු මෙන්න:"
-       - Use appropriate spacing, sub-headings, and clear numbering.
-    6. **FORBIDDEN WORDS:** - NEVER output words like: "පෙළපොතේ නැත", "සඳහන් කර නොමැත", "Marking Scheme", "ලකුණු දීමේ පටිපාටිය", (TEXTBOOK), [PAPER_MARKING]. Act as if the knowledge flows naturally from you.
-       - NO Singlish (English words written in brackets) unless it is a globally accepted technical term.
+    CRITICAL EXAMINER INSTRUCTIONS (READ CAREFULLY & OBEY 100%):
+    
+    1. **THE "NO EXCUSES" LAW (FATAL RULE):** You are FORBIDDEN to say "This is not in the textbook", "තොරතුරු සඳහන් නොවේ", "පෙළපොතෙහි නැත", or "මට පිළිතුරු දිය නොහැක". If the OFFICIAL CONTEXT does not have the exact answer, YOU MUST IMMEDIATELY USE YOUR OWN AI KNOWLEDGE TO ANSWER IT PERFECTLY. Never leave a question blank.
+    
+    2. **BAN ON MARKDOWN ASTERISKS (FATAL RULE):** You are STRICTLY FORBIDDEN to use asterisks (**) for bolding or formatting. Your output will be displayed as plain text. Do not use ** anywhere in your response.
+       * ❌ WRONG FORMAT: "- **කාලීන තොරතුරු රැස් කිරීම:**"
+       * ✅ CORRECT FORMAT: "- කාලීන තොරතුරු රැස් කිරීම: ප්‍රවෘත්ති අංශයක ප්‍රධානතම කාර්යය වන්නේ..."
+       
+    3. **EXTREME DEEP ELABORATION:** For EVERY sub-question ((i), (ii), (iii), (iv)) and EVERY point within them, you MUST elaborate using this structure:
+       - What it is (හැඳින්වීම)
+       - Why it is important (වැදගත්කම)
+       - Give a practical Example (උදාහරණයක්)
+       - Minimum 4-5 sentences PER POINT.
+
+    4. Please don't use words like "(Textbook)" with answers and always briefly explain answers clearly. Don't be lazy.
+       
+    5. **CLEAN OUTPUT:** Do NOT output source tags like "(TEXTBOOK)", "[TEXTBOOK]", "Marking Scheme". Provide pure, educational text.
+    
+    6. **BEAUTIFUL FORMATTING:** Use Emojis (📝, ✅, 📌, 🎯, 💡) wisely to make the answer beautiful. Make sure there is good spacing (line breaks) between paragraphs.
+    
+    7. **TONE & START:** Answer entirely in {medium} language. Always start exactly with: "හරි පුතේ, පිළිතුරු මෙන්න: 👇\n\n"
     """
     
     contents = [prompt]
@@ -252,7 +292,18 @@ async def ingest_pdf(request: Request, pdf: UploadFile = File(...), grade: str =
             for i, image in enumerate(images):
                 if await request.is_disconnected(): return 
                 page_num = startPage + i
-                prompt = f"Extract all text/diagrams. Language: {medium}. Keep structure. Do NOT summarize."
+                prompt = f"""
+                You are an expert educational content extractor. Carefully read and extract ALL text, tables, and data from this image.
+                Target Language: {medium}. 
+                
+                STRICT FORMATTING RULES:
+                1. Use clear Markdown formatting.
+                2. If there is a Table in the image, strictly convert it into a Markdown Table.
+                3. Clearly bold the Question Numbers (e.g., **1 (iv) (a)**) and separate them from the answers using line breaks.
+                4. Keep the marking points and allocated marks (e.g., 0.5, 1) clearly next to the relevant answer.
+                5. If there are diagrams (like Logic Circuits), extract all text/labels logically.
+                6. DO NOT summarize. Extract every single word, note (සටහන), and mark precisely.
+                """
                 
                 success = False
                 for attempt in range(3):

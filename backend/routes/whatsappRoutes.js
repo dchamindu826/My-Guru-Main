@@ -111,6 +111,9 @@ router.post('/webhook', async (req, res) => {
     try {
         let body = req.body;
         
+        // 🔥 මේ අලුත් පේළිය මෙතනින් දාන්න 🔥
+        console.log("📩 Incoming WhatsApp Webhook:", JSON.stringify(body, null, 2));
+        
         if (body.object === 'whatsapp_business_account') {
             if (body.entry && body.entry[0].changes && body.entry[0].changes[0].value.messages && body.entry[0].changes[0].value.messages[0]) {
                 

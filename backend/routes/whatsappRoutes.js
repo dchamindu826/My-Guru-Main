@@ -53,11 +53,16 @@ async function sendWhatsAppMessage(to, text) {
         console.log(`[WhatsApp] ✅ API Accepted: ${response.data.messages[0].id}`);
         
     } catch (error) {
-        console.error("❌ API ERROR:", JSON.stringify(error.response?.data || error.message, null, 2));
+        // මෙතනින් තමයි ඇත්තම ලෙඩේ අහුවෙන්නේ
+        if (error.response) {
+            console.error("❌ API ERROR DATA:", JSON.stringify(error.response.data, null, 2));
+        } else {
+            console.error("❌ AXIOS ERROR:", error.message);
+        }
     }
 }
 
-// Helper: Send Interactive Buttons
+// Helper: Send Interactive Buttons (For Medium Selection)
 async function sendMediumSelectionButtons(to) {
     try {
         const response = await axios({
@@ -74,7 +79,9 @@ async function sendMediumSelectionButtons(to) {
                 type: "interactive",
                 interactive: {
                     type: "button",
-                    body: { text: "ඔයාට My Guru ගෙන් ප්‍රශ්න අහන්න ඕන Medium එක මොකක්ද? 👇" },
+                    body: {
+                        text: "ඔයාට My Guru ගෙන් ප්‍රශ්න අහන්න ඕන Medium එක මොකක්ද? 👇"
+                    },
                     action: {
                         buttons: [
                             { type: "reply", reply: { id: "MED_SINHALA", title: "Sinhala" } },
@@ -85,7 +92,7 @@ async function sendMediumSelectionButtons(to) {
                 }
             }
         });
-        console.log(`[WhatsApp] ✅ Buttons Accepted: ${response.data.messages[0].id}`);
+        console.log(`[WhatsApp] ✅ Buttons Sent: ${response.data.messages[0].id}`);
     } catch (error) {
         console.error("❌ BUTTON ERROR:", JSON.stringify(error.response?.data || error.message, null, 2));
     }
@@ -96,22 +103,29 @@ router.get('/webhook', (req, res) => {
     let mode = req.query["hub.mode"];
     let token = req.query["hub.verify_token"];
     let challenge = req.query["hub.challenge"];
-    if (mode === "subscribe" && token === VERIFY_TOKEN) {
-        res.status(200).send(challenge);
-    } else {
-        res.sendStatus(403);
+
+    if (mode && token) {
+        if (mode === "subscribe" && token === VERIFY_TOKEN) {
+            console.log("✅ WEBHOOK_VERIFIED");
+            res.status(200).send(challenge);
+        } else {
+            res.sendStatus(403);
+        }
     }
 });
 
-// Main Webhook
+// Main Webhook for receiving messages
 router.post('/webhook', async (req, res) => {
     try {
         let body = req.body;
         
-        // Log status updates (delivered, read, sent)
+        // ලොග්ස් වැඩිකරගන්න මේක දැම්මා
+        console.log("📩 Full Webhook Payload:", JSON.stringify(body, null, 2));
+        
+        // Status updates අල්ලගන්න (Delivered ද නැද්ද බලන්න)
         if (body.entry && body.entry[0].changes[0].value.statuses) {
             let statusObj = body.entry[0].changes[0].value.statuses[0];
-            console.log(`📩 Status Update: [${statusObj.id}] is now [${statusObj.status}] to [${statusObj.recipient_id}]`);
+            console.log(`📊 Status Update: ID ${statusObj.id} is now ${statusObj.status}`);
             return res.sendStatus(200);
         }
 
@@ -124,41 +138,25 @@ router.post('/webhook', async (req, res) => {
                 
                 res.sendStatus(200); 
 
+                // 1. Get User Profile
                 const { data: userProfile } = await supabase.from('profiles').select('*').eq('whatsapp_number', phone_number).single();
 
                 if (!userProfile) {
-                    await sendWhatsAppMessage(phone_number, "ආයුබෝවන්! My Guru වෙත සාදරයෙන් පිළිගනිමු. 🎓\nhttps://myguru.lumi-automation.com");
+                    await sendWhatsAppMessage(phone_number, "ආයුබෝවන්! My Guru වෙත සාදරයෙන් පිළිගනිමු. 🎓\nකරුණාකර ලියාපදිංචි වන්න.");
                     return;
                 }
 
+                // 2. Plan Check
                 const { data: activePlan } = await supabase.from('payments')
                     .select('*').eq('user_id', userProfile.id).eq('status', 'approved')
                     .order('created_at', { ascending: false }).limit(1).single();
 
                 if (!activePlan || activePlan.package_name === 'Free') {
-                    await sendWhatsAppMessage(phone_number, "🛑 Premium සේවාව ලබා ගැනීමට Upgrade කරන්න.\nhttps://myguru.lumi-automation.com/plans");
+                    await sendWhatsAppMessage(phone_number, "🛑 කරුණාකර Upgrade කරන්න.");
                     return;
                 }
 
-                let isUnlimited = activePlan.package_name.toLowerCase().includes('genius');
-                let maxCredits = isUnlimited ? 150 : 100;
-                let { data: userCredit } = await supabase.from('user_credits').select('*').eq('user_id', userProfile.id).single();
-                let today = new Date().toISOString().split('T')[0];
-
-                if (!userCredit) {
-                    const newCredit = { user_id: userProfile.id, total_used: 0, daily_used: 0, last_reset_date: today };
-                    await supabase.from('user_credits').insert([newCredit]);
-                    userCredit = newCredit;
-                } else if (userCredit.last_reset_date !== today) {
-                    await supabase.from('user_credits').update({ daily_used: 0, last_reset_date: today }).eq('user_id', userProfile.id);
-                    userCredit.daily_used = 0;
-                }
-
-                if ((!isUnlimited && userCredit.total_used >= maxCredits) || (isUnlimited && userCredit.daily_used >= maxCredits)) {
-                    await sendWhatsAppMessage(phone_number, "🛑 සීමාව ඉක්මවා ඇත.");
-                    return;
-                }
-
+                // 3. Session Management
                 let { data: session } = await supabase.from('whatsapp_sessions').select('*').eq('phone', phone_number).single();
                 if (!session) {
                     const newSession = { phone: phone_number, state: 'CHOOSING_MEDIUM', medium: null, subject: null };
@@ -170,43 +168,54 @@ router.post('/webhook', async (req, res) => {
                 if (msg_type === 'text') msg_text = msgObj.text.body;
                 else if (msg_type === 'interactive') msg_text = msgObj.interactive.button_reply.title;
 
+                // Menu Command
                 if (msg_text.toLowerCase() === '#menu') {
                     await supabase.from('whatsapp_sessions').update({ state: 'CHOOSING_MEDIUM', subject: null }).eq('phone', phone_number);
                     await sendMediumSelectionButtons(phone_number);
                     return;
                 }
 
+                // State Machine Logic
                 if (session.state === 'CHOOSING_MEDIUM') {
                     if (['Sinhala', 'English', 'Tamil'].includes(msg_text)) {
                         await supabase.from('whatsapp_sessions').update({ state: 'CHOOSING_SUBJECT', medium: msg_text }).eq('phone', phone_number);
-                        await sendWhatsAppMessage(phone_number, `✅ ${msg_text} තෝරාගත්තා! දැන් විෂය අංකය එවන්න.`);
-                    } else await sendMediumSelectionButtons(phone_number);
+                        await sendWhatsAppMessage(phone_number, `✅ ${msg_text} තෝරාගත්තා! දැන් විෂය අංකය (1-14) එවන්න.`);
+                    } else {
+                        await sendMediumSelectionButtons(phone_number);
+                    }
                     return;
                 }
 
                 if (session.state === 'CHOOSING_SUBJECT') {
-                    const subjectsMap = { '1': 'Science', '2': 'Mathematics' }; // simplified for test
+                    const subjectsMap = { '1': 'Science', '2': 'Mathematics', '3': 'History', '4': 'Buddhism', '5': 'Sinhala' }; 
                     let chosenSubject = subjectsMap[msg_text.trim()];
                     if (chosenSubject) {
                         await supabase.from('whatsapp_sessions').update({ state: 'CHATTING', subject: chosenSubject }).eq('phone', phone_number);
-                        await sendWhatsAppMessage(phone_number, `🎉 ${chosenSubject} තෝරාගත්තා! ප්‍රශ්නය අහන්න.`);
-                    } else await sendWhatsAppMessage(phone_number, "⚠️ අංකය වැරදියි.");
+                        await sendWhatsAppMessage(phone_number, `🎉 ${chosenSubject} තෝරාගත්තා! දැන් ප්‍රශ්නය එවන්න.`);
+                    } else {
+                        await sendWhatsAppMessage(phone_number, "⚠️ අංකය වැරදියි (1-14).");
+                    }
                     return;
                 }
 
                 if (session.state === 'CHATTING') {
+                    // Gemini Call
                     let payload = { question: msg_text, subject: session.subject, medium: session.medium };
                     try {
                         const aiRes = await axios.post("http://127.0.0.1:5002/chat", payload);
-                        if(aiRes.data?.answer) {
+                        if(aiRes.data && aiRes.data.answer) {
                             await sendWhatsAppMessage(phone_number, aiRes.data.answer);
-                            await supabase.from('user_credits').update({ total_used: userCredit.total_used + 1, daily_used: userCredit.daily_used + 1 }).eq('user_id', userProfile.id);
                         }
-                    } catch (e) { console.error("AI Error:", e.message); }
+                    } catch (error) {
+                        console.error("AI Brain Error:", error.message);
+                    }
                 }
             }
         }
-    } catch (err) { res.sendStatus(200); }
+    } catch (err) {
+        console.error("General Webhook Error:", err);
+        res.sendStatus(200); 
+    }
 });
 
 module.exports = router;

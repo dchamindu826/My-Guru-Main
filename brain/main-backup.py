@@ -11,7 +11,7 @@ import base64
 import io
 import random
 import time
-import datetime # 🔥 අලුතින් එකතු කරපු import එක
+import datetime
 from PIL import Image
 from pdf2image import convert_from_bytes
 from dotenv import load_dotenv
@@ -112,11 +112,13 @@ def safe_google_api_call(contents, is_json=False):
             
     return None, f"All keys failed. Last error: {last_err}"
 
+# 🔥 UPDATED CHAT REQUEST MODEL
 class ChatRequest(BaseModel):
     question: str
     subject: str
     medium: str
     image_data: str | None = None
+    audio_data: str | None = None # WhatsApp Voice Notes වලට
 
 class DeleteRequest(BaseModel):
     ids: list[int]
@@ -129,7 +131,7 @@ class DeletePagesRequest(BaseModel):
     pages: list[int]
 
 # --- BRAIN LOGIC ---
-def generate_smart_answer(context, question, subject, medium, img=None):
+def generate_smart_answer(context, question, subject, medium, img=None, audio_part=None):
     context_text = ""
     if context:
         for item in context:
@@ -137,8 +139,6 @@ def generate_smart_answer(context, question, subject, medium, img=None):
             category = meta.get('category', 'unknown').upper()
             context_text += f"\n[SOURCE: {category} | Grade {meta.get('grade')}]\n{item.get('content', '')}\n---"
     
-    # 🔥 THE ABSOLUTE STRICT MASTER EXAMINER PROMPT
-    # 🔥 THE ABSOLUTE STRICT MASTER EXAMINER PROMPT (V4 - Maximum Elaboration)
     prompt = f"""
     You are 'My Guru', the Ultimate Sri Lankan School Examiner and Master Teacher. 
     You are bound by STRICT RULES. If you break them, you will fail the system.
@@ -176,8 +176,13 @@ def generate_smart_answer(context, question, subject, medium, img=None):
     """
     
     contents = [prompt]
-    if img: contents.extend([img, "Examine this image pixel by pixel. Read EVERY sub-question clearly. Answer EVERY sub-question accurately with deep elaboration based on the instructions."])
+    if img: 
+        contents.extend([img, "Examine this image pixel by pixel. Read EVERY sub-question clearly. Answer EVERY sub-question accurately with deep elaboration based on the instructions."])
     
+    # 🔥 Audio Part එකක් තියෙනවා නම් ඒකත් contents වලට දානවා
+    if audio_part:
+        contents.extend([audio_part, "Listen to this audio carefully and answer the student's question based on the audio and instructions."])
+        
     res, err = safe_google_api_call(contents)
     
     if res and hasattr(res, 'text') and res.text:
@@ -189,13 +194,12 @@ def generate_smart_answer(context, question, subject, medium, img=None):
 @app.post("/chat")
 def chat_endpoint(request: ChatRequest):
     img = None
+    audio_part = None
+    
+    # 1. Image Handling
     if request.image_data:
         try:
-            if "base64," in request.image_data: 
-                base64_str = request.image_data.split("base64,")[1]
-            else: 
-                base64_str = request.image_data
-            
+            base64_str = request.image_data.split("base64,")[1] if "base64," in request.image_data else request.image_data
             img = Image.open(io.BytesIO(base64.b64decode(base64_str)))
             if img.mode != 'RGB':
                 img = img.convert('RGB')
@@ -203,13 +207,31 @@ def chat_endpoint(request: ChatRequest):
         except Exception as e:
             print(f"⚠️ Image Load Error: {e}")
 
-    safe_question = request.question if request.question.strip() else "Answer ALL the questions in the image accurately."
+    # 2. Audio Handling (WhatsApp Voice Notes) 🔥
+    if request.audio_data:
+        try:
+            base64_audio = request.audio_data.split("base64,")[1] if "base64," in request.audio_data else request.audio_data
+            audio_bytes = base64.b64decode(base64_audio)
+            
+            # WhatsApp OGG / M4A format එකට ගැලපෙන විදිහට Part එක හදනවා
+            audio_part = types.Part.from_bytes(
+                data=audio_bytes,
+                mime_type='audio/ogg' # Default to ogg, can be changed if needed
+            )
+        except Exception as e:
+            print(f"⚠️ Audio Load Error: {e}")
+
+    safe_question = request.question if request.question.strip() else "Please analyze the provided media (image/audio) and answer accurately."
     
     kw_contents = []
-    # 🔥 EXTRACT MORE KEYWORDS INCLUDING PROPER NOUNS
+    
+    # 🔥 EXTRACT KEYWORDS FROM IMAGE, AUDIO OR TEXT
     if img:
         kw_contents.append(img)
         kw_prompt = f'Read ALL questions in the image. Extract 8-12 highly specific, unique ROOT NOUNS (නාමපද/මූලික පද) and Technical Terms that represent the core subjects. DO NOT extract common verbs or joining words. Output ONLY a strict JSON Array of strings: ["word1", "word2"]'
+    elif audio_part:
+        kw_contents.append(audio_part)
+        kw_prompt = f'Listen to the audio. Extract 8-12 highly specific, unique ROOT NOUNS (නාමපද/මූලික පද) and Technical Terms related to the core subject being discussed. Output ONLY a strict JSON Array of strings: ["word1", "word2"]'
     else:
         kw_prompt = f'Extract 8-12 highly specific ROOT NOUNS and Technical Terms from "{safe_question}". Ignore common verbs. Output ONLY a strict JSON Array of strings: ["word1", "word2"]'
         
@@ -230,7 +252,6 @@ def chat_endpoint(request: ChatRequest):
         search_terms = []
         for k in keywords:
             search_terms.append(k)
-            # 🔥 FIX: Sinhala words can be short (2 chars) so lowered the length limit
             search_terms.extend([w for w in k.split() if len(w) > 2])
             
         search_terms = list(set(search_terms))[:10] 
@@ -251,7 +272,7 @@ def chat_endpoint(request: ChatRequest):
                 continue 
 
     try:
-        ans = generate_smart_answer(ctx, safe_question, request.subject, request.medium, img)
+        ans = generate_smart_answer(ctx, safe_question, request.subject, request.medium, img, audio_part)
         return {"answer": ans}
     except Exception as final_err:
         return {"answer": f"⚠️ කේත දෝෂයක් (Code Error): {str(final_err)}"}

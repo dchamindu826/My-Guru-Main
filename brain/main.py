@@ -65,7 +65,8 @@ def safe_google_api_call(contents, is_json=False):
                     types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
                     types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
                     types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-                ]
+                ],
+                temperature=0.3 # Lower temperature for more accurate, less hallucinatory answers
             )
             
             response = client.models.generate_content(
@@ -74,7 +75,7 @@ def safe_google_api_call(contents, is_json=False):
                 config=config
             )
             
-            # 🔥 TOKEN TRACKING & COST CALCULATION (Gemini 2.0 Flash Rates)
+            # 🔥 TOKEN TRACKING & COST CALCULATION
             try:
                 usage = getattr(response, 'usage_metadata', None)
                 if usage:
@@ -83,10 +84,7 @@ def safe_google_api_call(contents, is_json=False):
                     total_tokens = getattr(usage, 'total_token_count', 0) or 0
                     
                     if total_tokens > 0:
-                        # Cost for gemini-2.0-flash standard ($0.10 per 1M input, $0.40 per 1M output)
                         cost = ((in_tokens / 1000000.0) * 0.10) + ((out_tokens / 1000000.0) * 0.40)
-                        
-                        # Terminal එකේ බලාගන්න Print එක
                         print(f"💰 [Request Cost] Tokens: {total_tokens} (In: {in_tokens} | Out: {out_tokens}) | Cost: ${cost:.6f}")
                         
                         supabase.table("token_usage").insert({
@@ -112,13 +110,12 @@ def safe_google_api_call(contents, is_json=False):
             
     return None, f"All keys failed. Last error: {last_err}"
 
-# 🔥 UPDATED CHAT REQUEST MODEL
 class ChatRequest(BaseModel):
     question: str
     subject: str
     medium: str
     image_data: str | None = None
-    audio_data: str | None = None # WhatsApp Voice Notes වලට
+    audio_data: str | None = None
 
 class DeleteRequest(BaseModel):
     ids: list[int]
@@ -132,63 +129,88 @@ class DeletePagesRequest(BaseModel):
 
 # --- BRAIN LOGIC ---
 def generate_smart_answer(context, question, subject, medium, img=None, audio_part=None):
-    context_text = ""
+    # Categorize Context
+    marking_schemes = ""
+    textbooks = ""
+    
     if context:
         for item in context:
             meta = item.get('metadata', {})
-            category = meta.get('category', 'unknown').upper()
-            context_text += f"\n[SOURCE: {category} | Grade {meta.get('grade')}]\n{item.get('content', '')}\n---"
-    
+            category = str(meta.get('category', '')).lower()
+            content_str = item.get('content', '')
+            
+            if 'marking' in category or 'paper' in category:
+                marking_schemes += f"\n{content_str}\n---"
+            else:
+                textbooks += f"\n{content_str}\n---"
+
+    lang_instruction = "You MUST reply entirely in Sinhala." if medium.lower() == "sinhala" else "You MUST reply entirely in English."
+
     prompt = f"""
-    You are 'My Guru', the Ultimate Sri Lankan School Examiner and Master Teacher. 
-    You are bound by STRICT RULES. If you break them, you will fail the system.
-    
-    SUBJECT: {subject}
+    You are 'My Guru', an elite and highly professional examiner and expert teacher in Sri Lanka.
+    Your task is to provide 100% accurate, highly structured, and deeply explanatory answers. NO HALLUCINATIONS. NO LIES. Do not generate long, irrelevant paragraphs ("wal pal"). Keep it focused, highly informative, and directly to the point.
+
+    CURRENT SUBJECT: {subject}
     TARGET MEDIUM: {medium}
     
-    OFFICIAL CONTEXT:
-    {context_text if context_text else "NO CONTEXT FETCHED. YOU MUST USE YOUR VAST INTERNAL KNOWLEDGE."}
-    
+    {lang_instruction}
+
     STUDENT'S QUESTION:
     {question}
-    
-    CRITICAL EXAMINER INSTRUCTIONS (READ CAREFULLY & OBEY 100%):
-    
-    1. **THE "NO EXCUSES" LAW (FATAL RULE):** You are FORBIDDEN to say "This is not in the textbook", "තොරතුරු සඳහන් නොවේ", "පෙළපොතෙහි නැත", or "මට පිළිතුරු දිය නොහැක". If the OFFICIAL CONTEXT does not have the exact answer, YOU MUST IMMEDIATELY USE YOUR OWN AI KNOWLEDGE TO ANSWER IT PERFECTLY. Never leave a question blank.
-    
-    2. **BAN ON MARKDOWN ASTERISKS (FATAL RULE):** You are STRICTLY FORBIDDEN to use asterisks (**) for bolding or formatting. Your output will be displayed as plain text. Do not use ** anywhere in your response.
-       * ❌ WRONG FORMAT: "- **කාලීන තොරතුරු රැස් කිරීම:**"
-       * ✅ CORRECT FORMAT: "- කාලීන තොරතුරු රැස් කිරීම: ප්‍රවෘත්ති අංශයක ප්‍රධානතම කාර්යය වන්නේ..."
-       
-    3. **EXTREME DEEP ELABORATION:** For EVERY sub-question ((i), (ii), (iii), (iv)) and EVERY point within them, you MUST elaborate using this structure:
-       - What it is (හැඳින්වීම)
-       - Why it is important (වැදගත්කම)
-       - Give a practical Example (උදාහරණයක්)
-       - Minimum 4-5 sentences PER POINT.
 
-    4. Please don't use words like "(Textbook)" with answers and always briefly explain answers clearly. Don't be lazy.
-       
-    5. **CLEAN OUTPUT:** Do NOT output source tags like "(TEXTBOOK)", "[TEXTBOOK]", "Marking Scheme". Provide pure, educational text.
-    
-    6. **BEAUTIFUL FORMATTING:** Use Emojis (📝, ✅, 📌, 🎯, 💡) wisely to make the answer beautiful. Make sure there is good spacing (line breaks) between paragraphs.
-    
-    7. **TONE & START:** Answer entirely in {medium} language. Always start exactly with: "හරි පුතේ, පිළිතුරු මෙන්න: 👇\n\n"
+    --- KNOWLEDGE BASE ---
+    [PRIORITY 1: MARKING SCHEMES]
+    {marking_schemes if marking_schemes else "None available."}
+
+    [PRIORITY 2: TEXTBOOKS]
+    {textbooks if textbooks else "None available."}
+
+    --- CRITICAL EXAMINER INSTRUCTIONS ---
+
+    1. **TOPIC RESTRICTION:** You must ONLY answer questions related to the SUBJECT: '{subject}'. If the user asks a question completely unrelated to '{subject}' (e.g., asking a Science question when the subject is History), politely refuse to answer and ask them to switch the subject using the #menu command. 
+       * Sinhala Refusal: "කරුණාකර '{subject}' විෂයට අදාළ ප්‍රශ්න පමණක් යොමු කරන්න. වෙනත් විෂයයක් සඳහා #menu ලෙස යවා විෂය වෙනස් කරන්න."
+       * English Refusal: "Please ask questions related to '{subject}' only. To ask about another subject, type #menu and change the subject."
+
+    2. **KNOWLEDGE HIERARCHY (HOW TO FIND THE ANSWER):**
+       * **STEP 1:** Search the [PRIORITY 1: MARKING SCHEMES]. If the exact answer is there, use it as the core of your response.
+       * **STEP 2:** If not in Marking Schemes, search the [PRIORITY 2: TEXTBOOKS]. If the concept is there, construct the answer based on it.
+       * **STEP 3:** If the answer is NOT in the provided Context at all, use your vast internal knowledge (Social Knowledge/General AI Knowledge) to construct a perfect, accurate answer. NEVER say "It is not in the textbook" or "I cannot answer". ALWAYS provide the answer.
+       * **WARNING FOR MATHS & SCIENCE:** Double-check all calculations and formulas. Provide step-by-step working. Do not output wrong mathematical answers.
+
+    3. **MCQ QUESTIONS:** If the student asks a Multiple Choice Question (MCQ):
+       * First, state the Correct Answer clearly.
+       * Second, clearly explain *WHY* it is the correct answer and *WHY* the other options are wrong.
+
+    4. **STRUCTURE & FORMATTING (MANDATORY):**
+       * Be Professional. Do not use words like "(Textbook)", "(Marking Scheme)", "හැඳින්වීම:", "කරුණු:", "උදාහරණ:". Just weave them naturally into the text.
+       * **DO NOT USE ASTERISKS (**) FOR BOLDING.** Use plain text.
+       * Break the answer into logical paragraphs.
+       * If it's a large question (e.g., Question 03 with parts a, b, c), answer EACH sub-question separately and clearly.
+       * For every main point, provide:
+         - A clear explanation.
+         - A relevant, practical example to make it easy to understand.
+       * Use emojis (📝, ✅, 📌, 💡) to make it visually appealing but keep it professional. Do not overdo it.
+
+    5. **TONE:** Be encouraging, intelligent, and highly professional. Never be boring.
     """
     
     contents = [prompt]
     if img: 
-        contents.extend([img, "Examine this image pixel by pixel. Read EVERY sub-question clearly. Answer EVERY sub-question accurately with deep elaboration based on the instructions."])
+        contents.extend([img, "Analyze this image perfectly. If it's a question paper, read every question carefully. Do not miss any details."])
     
-    # 🔥 Audio Part එකක් තියෙනවා නම් ඒකත් contents වලට දානවා
     if audio_part:
-        contents.extend([audio_part, "Listen to this audio carefully and answer the student's question based on the audio and instructions."])
+        contents.extend([audio_part, "Listen to this audio carefully and answer the student's question based on the audio."])
         
     res, err = safe_google_api_call(contents)
     
     if res and hasattr(res, 'text') and res.text:
         return res.text
         
-    return f"⚠️ සිස්ටම් එක කාර්යබහුලයි. (Error: {err}). කරුණාකර නැවත උත්සාහ කරන්න පුතේ."
+    error_msg_si = f"⚠️ සිස්ටම් එක කාර්යබහුලයි. (Error: {err}). කරුණාකර නැවත උත්සාහ කරන්න පුතේ."
+    error_msg_en = f"⚠️ The system is currently busy. (Error: {err}). Please try again."
+    
+    return error_msg_si if medium.lower() == 'sinhala' else error_msg_en
+
 
 # --- ENDPOINTS ---
 @app.post("/chat")
@@ -196,7 +218,6 @@ def chat_endpoint(request: ChatRequest):
     img = None
     audio_part = None
     
-    # 1. Image Handling
     if request.image_data:
         try:
             base64_str = request.image_data.split("base64,")[1] if "base64," in request.image_data else request.image_data
@@ -207,16 +228,13 @@ def chat_endpoint(request: ChatRequest):
         except Exception as e:
             print(f"⚠️ Image Load Error: {e}")
 
-    # 2. Audio Handling (WhatsApp Voice Notes) 🔥
     if request.audio_data:
         try:
             base64_audio = request.audio_data.split("base64,")[1] if "base64," in request.audio_data else request.audio_data
             audio_bytes = base64.b64decode(base64_audio)
-            
-            # WhatsApp OGG / M4A format එකට ගැලපෙන විදිහට Part එක හදනවා
             audio_part = types.Part.from_bytes(
                 data=audio_bytes,
-                mime_type='audio/ogg' # Default to ogg, can be changed if needed
+                mime_type='audio/ogg' 
             )
         except Exception as e:
             print(f"⚠️ Audio Load Error: {e}")
@@ -224,16 +242,14 @@ def chat_endpoint(request: ChatRequest):
     safe_question = request.question if request.question.strip() else "Please analyze the provided media (image/audio) and answer accurately."
     
     kw_contents = []
-    
-    # 🔥 EXTRACT KEYWORDS FROM IMAGE, AUDIO OR TEXT
     if img:
         kw_contents.append(img)
-        kw_prompt = f'Read ALL questions in the image. Extract 8-12 highly specific, unique ROOT NOUNS (නාමපද/මූලික පද) and Technical Terms that represent the core subjects. DO NOT extract common verbs or joining words. Output ONLY a strict JSON Array of strings: ["word1", "word2"]'
+        kw_prompt = f'Read ALL text in the image. Extract 8-12 highly specific ROOT NOUNS and Technical Terms. Output ONLY a strict JSON Array of strings: ["word1", "word2"]'
     elif audio_part:
         kw_contents.append(audio_part)
-        kw_prompt = f'Listen to the audio. Extract 8-12 highly specific, unique ROOT NOUNS (නාමපද/මූලික පද) and Technical Terms related to the core subject being discussed. Output ONLY a strict JSON Array of strings: ["word1", "word2"]'
+        kw_prompt = f'Listen to the audio. Extract 8-12 highly specific ROOT NOUNS and Technical Terms. Output ONLY a strict JSON Array of strings: ["word1", "word2"]'
     else:
-        kw_prompt = f'Extract 8-12 highly specific ROOT NOUNS and Technical Terms from "{safe_question}". Ignore common verbs. Output ONLY a strict JSON Array of strings: ["word1", "word2"]'
+        kw_prompt = f'Extract 8-12 highly specific ROOT NOUNS and Technical Terms from "{safe_question}". Output ONLY a strict JSON Array of strings: ["word1", "word2"]'
         
     kw_contents.append(kw_prompt)
     kw_res, kw_err = safe_google_api_call(kw_contents, is_json=True)
@@ -258,7 +274,8 @@ def chat_endpoint(request: ChatRequest):
         
         for term in search_terms:
             try:
-                query = supabase.table("documents").select("content, metadata").eq("metadata->>subject", request.subject).ilike("content", f"%{term}%").limit(5)
+                # Search using the provided subject and medium
+                query = supabase.table("documents").select("content, metadata").eq("metadata->>subject", request.subject).eq("metadata->>medium", request.medium).ilike("content", f"%{term}%").limit(5)
                 res = query.execute()
                 
                 for item in res.data:
@@ -275,7 +292,7 @@ def chat_endpoint(request: ChatRequest):
         ans = generate_smart_answer(ctx, safe_question, request.subject, request.medium, img, audio_part)
         return {"answer": ans}
     except Exception as final_err:
-        return {"answer": f"⚠️ කේත දෝෂයක් (Code Error): {str(final_err)}"}
+        return {"answer": f"⚠️ Error: {str(final_err)}"}
 
 @app.delete("/knowledge/delete")
 def delete_knowledge(payload: DeleteRequest):
@@ -298,6 +315,7 @@ def delete_knowledge_pages(payload: DeletePagesRequest):
         
         if ids_to_delete:
             supabase.table("documents").delete().in_("id", ids_to_delete).execute()
+            
         return {"message": "Pages deleted successfully", "deleted_count": len(ids_to_delete)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -323,7 +341,7 @@ async def ingest_pdf(request: Request, pdf: UploadFile = File(...), grade: str =
                 3. Clearly bold the Question Numbers (e.g., **1 (iv) (a)**) and separate them from the answers using line breaks.
                 4. Keep the marking points and allocated marks (e.g., 0.5, 1) clearly next to the relevant answer.
                 5. If there are diagrams (like Logic Circuits), extract all text/labels logically.
-                6. DO NOT summarize. Extract every single word, note (සටහන), and mark precisely.
+                6. DO NOT summarize. Extract every single word, note, and mark precisely.
                 """
                 
                 success = False

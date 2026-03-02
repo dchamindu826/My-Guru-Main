@@ -79,7 +79,7 @@ async function sendMediumSelectionButtons(to) {
                 interactive: {
                     type: "button",
                     body: {
-                        text: "ඔයාට My Guru ගෙන් ප්‍රශ්න අහන්න ඕන Medium එක මොකක්ද? 👇"
+                        text: "🎓 Welcome to My Guru! | My Guru වෙත සාදරයෙන් පිළිගනිමු!\n\nඔයාට My Guru ගෙන් ප්‍රශ්න අහන්න ඕන Medium එක මොකක්ද? 👇\nPlease select your preferred language medium 👇"
                     },
                     action: {
                         buttons: [
@@ -118,11 +118,8 @@ router.post('/webhook', async (req, res) => {
     try {
         let body = req.body;
         
-        console.log("📩 Full Webhook Payload:", JSON.stringify(body, null, 2));
-        
         if (body.entry && body.entry[0].changes[0].value.statuses) {
             let statusObj = body.entry[0].changes[0].value.statuses[0];
-            console.log(`📊 Status Update: ID ${statusObj.id} is now ${statusObj.status}`);
             return res.sendStatus(200);
         }
 
@@ -153,7 +150,6 @@ router.post('/webhook', async (req, res) => {
                 let isUnlimited = activePlan.package_name.toLowerCase().includes('genius');
                 let maxCredits = isUnlimited ? 150 : 100;
 
-                // Use the user_id (text) from the payment record
                 let { data: userCredit } = await supabase.from('user_credits').select('*').eq('user_id', activePlan.user_id).single();
                 let today = new Date().toISOString().split('T')[0];
 
@@ -167,7 +163,7 @@ router.post('/webhook', async (req, res) => {
                 }
 
                 if ((!isUnlimited && userCredit.total_used >= maxCredits) || (isUnlimited && userCredit.daily_used >= maxCredits)) {
-                    await sendWhatsAppMessage(phone_number, "🛑 ඔයාගේ අද දවසේ ප්‍රශ්න සීමාව ඉක්මවා ඇත. හෙට නැවත උත්සාහ කරන්න.");
+                    await sendWhatsAppMessage(phone_number, "🛑 ඔයාගේ අද දවසේ ප්‍රශ්න සීමාව ඉක්මවා ඇත. හෙට නැවත උත්සාහ කරන්න.\n🛑 You have reached your daily question limit. Please try again tomorrow.");
                     return;
                 }
 
@@ -184,40 +180,110 @@ router.post('/webhook', async (req, res) => {
                 else if (msg_type === 'interactive') msg_text = msgObj.interactive.button_reply.title;
 
                 // Menu Command
-                if (msg_text.toLowerCase() === '#menu') {
+                if (msg_text.toLowerCase() === '#menu' || msg_text.toLowerCase() === 'menu' || msg_text.toLowerCase() === 'hi' || msg_text.toLowerCase() === 'hello') {
                     await supabase.from('whatsapp_sessions').update({ state: 'CHOOSING_MEDIUM', subject: null }).eq('phone', phone_number);
                     await sendMediumSelectionButtons(phone_number);
                     return;
                 }
 
-                // State Machine Logic
+                // ----------------------------------------------------
+                // STATE MACHINE LOGIC
+                // ----------------------------------------------------
+                
+                // STATE 1: CHOOSING MEDIUM
                 if (session.state === 'CHOOSING_MEDIUM') {
                     if (['Sinhala', 'English', 'Tamil'].includes(msg_text)) {
                         await supabase.from('whatsapp_sessions').update({ state: 'CHOOSING_SUBJECT', medium: msg_text }).eq('phone', phone_number);
-                        await sendWhatsAppMessage(phone_number, `✅ ${msg_text} තෝරාගත්තා! දැන් විෂය අංකය (1-14) එවන්න.`);
+                        
+                        let subjectListMsg = "";
+                        
+                        // Translations for the Subjects List based on Medium
+                        if (msg_text === 'Sinhala') {
+                            subjectListMsg = `✅ සිංහල මාධ්‍යය තෝරාගත්තා!\n\nදැන් විද්‍යාව, ගණිතය වැනි අදාළ විෂය තෝරන්න (අංකය පමණක් එවන්න):\n\n1️⃣ විද්‍යාව (Science)\n2️⃣ ගණිතය (Mathematics)\n3️⃣ ඉතිහාසය (History)\n4️⃣ බුද්ධ ධර්මය (Buddhism)\n5️⃣ සිංහල (Sinhala)\n6️⃣ ඉංග්‍රීසි (English)\n7️⃣ තොරතුරු හා සන්නිවේදන තාක්ෂණය (ICT)\n8️⃣ වාණිජ හා ගිණුම්කරණය (Commerce)\n9️⃣ සෞඛ්‍යය හා ශාරීරික අධ්‍යාපනය (Health)\n🔟 භූගෝල විද්‍යාව (Geography)\n1️⃣1️⃣ පුරවැසි අධ්‍යාපනය (Civic)\n1️⃣2️⃣ මාධ්‍ය අධ්‍යයනය (Media)\n1️⃣3️⃣ දෙමළ (Tamil)\n1️⃣4️⃣ කෘෂිකර්මය (Agriculture)`;
+                        } else if (msg_text === 'English') {
+                            subjectListMsg = `✅ English Medium Selected!\n\nPlease select the subject by replying with its number:\n\n1️⃣ Science\n2️⃣ Mathematics\n3️⃣ History\n4️⃣ Buddhism\n5️⃣ Sinhala\n6️⃣ English\n7️⃣ ICT\n8️⃣ Commerce\n9️⃣ Health\n🔟 Geography\n1️⃣1️⃣ Civic\n1️⃣2️⃣ Media\n1️⃣3️⃣ Tamil\n1️⃣4️⃣ Agriculture`;
+                        } else if (msg_text === 'Tamil') {
+                            subjectListMsg = `✅ தமிழ் ஊடகம் தேர்ந்தெடுக்கப்பட்டது!\n\nதயவுசெய்து பாடத்தின் எண்ணை மட்டும் அனுப்பவும்:\n\n1️⃣ விஞ்ஞானம் (Science)\n2️⃣ கணிதம் (Mathematics)\n3️⃣ வரலாறு (History)\n4️⃣ பௌத்த தர்மம் (Buddhism)\n5️⃣ சிங்களம் (Sinhala)\n6️⃣ ஆங்கிலம் (English)\n7️⃣ தகவல் தொழில்நுட்பம் (ICT)\n8️⃣ வர்த்தகம் (Commerce)\n9️⃣ சுகாதாரம் (Health)\n🔟 புவியியல் (Geography)\n1️⃣1️⃣ குடியியல் (Civic)\n1️⃣2️⃣ ஊடகம் (Media)\n1️⃣3️⃣ தமிழ் (Tamil)\n1️⃣4️⃣ விவசாயம் (Agriculture)`;
+                        }
+
+                        await sendWhatsAppMessage(phone_number, subjectListMsg);
                     } else {
                         await sendMediumSelectionButtons(phone_number);
                     }
                     return;
                 }
 
+                // STATE 2: CHOOSING SUBJECT
                 if (session.state === 'CHOOSING_SUBJECT') {
-                    const subjectsMap = { '1': 'Science', '2': 'Mathematics', '3': 'History', '4': 'Buddhism', '5': 'Sinhala' }; 
+                    // Standard Subject Mapping
+                    const subjectsMap = { 
+                        '1': 'Science', '2': 'Mathematics', '3': 'History', '4': 'Buddhism', 
+                        '5': 'Sinhala', '6': 'English', '7': 'ICT', '8': 'Commerce', 
+                        '9': 'Health', '10': 'Geography', '11': 'Civic', '12': 'Media', 
+                        '13': 'Tamil', '14': 'Agriculture' 
+                    }; 
+                    
                     let chosenSubject = subjectsMap[msg_text.trim()];
+                    
                     if (chosenSubject) {
                         await supabase.from('whatsapp_sessions').update({ state: 'CHATTING', subject: chosenSubject }).eq('phone', phone_number);
-                        await sendWhatsAppMessage(phone_number, `🎉 ${chosenSubject} තෝරාගත්තා! දැන් ප්‍රශ්නය එවන්න.`);
+                        
+                        let welcomeMsg = "";
+                        let medium = session.medium; // This was just saved, but we get it from DB session
+                        
+                        // Translations for Welcome Message
+                        if (medium === 'Sinhala') {
+                            welcomeMsg = `🎉 ${chosenSubject} තෝරාගත්තා!\n\nආයුබෝවන් පුතේ! මම My Guru, ලංකාවේ පළවෙනි AI ගුරුවරයා. 🎓\nඔයාට ${chosenSubject} විෂය සම්බන්ධව මොනවද දැනගන්න ඕනෙ?\n\n(ප්‍රශ්නයක් ටයිප් කරලා එවන්න, නැත්නම් Photo එකක් හරි Voice note එකක් හරි එවන්න පුළුවන් 📸🎤)\n\n_වෙනත් විෂයයක් තෝරාගැනීමට අවශ්‍ය නම් ඕනෑම වෙලාවක #menu ලෙස යවන්න._`;
+                        } else if (medium === 'English') {
+                            welcomeMsg = `🎉 ${chosenSubject} Selected!\n\nHello there! I am My Guru, Sri Lanka's First AI Teacher. 🎓\nWhat would you like to know regarding ${chosenSubject}?\n\n(You can type your question, or send a Photo or a Voice note 📸🎤)\n\n_If you want to change the subject, simply type #menu at any time._`;
+                        } else if (medium === 'Tamil') {
+                            welcomeMsg = `🎉 ${chosenSubject} தேர்ந்தெடுக்கப்பட்டது!\n\nவணக்கம்! நான் My Guru, இலங்கையின் முதல் AI ஆசிரியர். 🎓\n${chosenSubject} பாடத்தில் நீங்கள் என்ன தெரிந்து கொள்ள விரும்புகிறீர்கள்?\n\n(உங்கள் கேள்வியை தட்டச்சு செய்யலாம் அல்லது படம் / குரல் பதிவு அனுப்பலாம் 📸🎤)\n\n_பாடத்தை மாற்ற விரும்பினால் எப்போது வேண்டுமானாலும் #menu என்று அனுப்பவும்._`;
+                        } else {
+                             welcomeMsg = `🎉 ${chosenSubject} Selected!\nAsk your questions now.`; // Fallback
+                        }
+
+                        await sendWhatsAppMessage(phone_number, welcomeMsg);
                     } else {
-                        await sendWhatsAppMessage(phone_number, "⚠️ අංකය වැරදියි (1-14).");
+                        // Error Messages
+                        let errorMsg = "⚠️ කරුණාකර නිවැරදි විෂය අංකය (1 සිට 14 දක්වා) පමණක් එවන්න.\n⚠️ Please reply with a valid subject number (1 to 14).";
+                        await sendWhatsAppMessage(phone_number, errorMsg);
                     }
                     return;
                 }
 
+                // STATE 3: CHATTING (Talking to Gemini)
                 if (session.state === 'CHATTING') {
-                    // Gemini Call
-                    let payload = { question: msg_text, subject: session.subject, medium: session.medium };
+                    
+                    let payload = { 
+                        question: msg_text, 
+                        subject: session.subject, 
+                        medium: session.medium 
+                    };
+
+                    // Handle Images
+                    if (msg_type === 'image') {
+                        let base64Img = await getMediaBase64(msgObj.image.id);
+                        if(base64Img) payload.image_data = base64Img;
+                        payload.question = msgObj.image.caption || "Please answer the questions in this image.";
+                    }
+                    
+                    // Handle Voice Notes (Audio)
+                    if (msg_type === 'audio') {
+                        let base64Audio = await getMediaBase64(msgObj.audio.id);
+                        if(base64Audio) payload.audio_data = base64Audio;
+                        payload.question = "Listen to this audio and answer the question.";
+                    }
+
+                    if(!payload.image_data && !payload.audio_data && !msg_text) {
+                        return; // Ignore unsupported message types
+                    }
+
                     try {
+                        // Show typing indicator or initial response (Optional, removed to save time/avoid spam)
+                        
+                        // Call Python Brain
                         const aiRes = await axios.post("http://127.0.0.1:5002/chat", payload);
+                        
                         if(aiRes.data && aiRes.data.answer) {
                             await sendWhatsAppMessage(phone_number, aiRes.data.answer);
                             
@@ -231,6 +297,10 @@ router.post('/webhook', async (req, res) => {
                         }
                     } catch (error) {
                         console.error("AI Brain Error:", error.message);
+                        let errMsg = session.medium === 'Sinhala' 
+                                     ? "⚠️ සිස්ටම් එක කාර්යබහුලයි. කරුණාකර මද වෙලාවකින් නැවත අහන්න." 
+                                     : "⚠️ The system is busy. Please try again in a moment.";
+                        await sendWhatsAppMessage(phone_number, errMsg);
                     }
                 }
             }

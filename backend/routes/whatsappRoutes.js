@@ -53,7 +53,6 @@ async function sendWhatsAppMessage(to, text) {
         console.log(`[WhatsApp] ✅ API Accepted: ${response.data.messages[0].id}`);
         
     } catch (error) {
-        // මෙතනින් තමයි ඇත්තම ලෙඩේ අහුවෙන්නේ
         if (error.response) {
             console.error("❌ API ERROR DATA:", JSON.stringify(error.response.data, null, 2));
         } else {
@@ -119,10 +118,8 @@ router.post('/webhook', async (req, res) => {
     try {
         let body = req.body;
         
-        // ලොග්ස් වැඩිකරගන්න මේක දැම්මා
         console.log("📩 Full Webhook Payload:", JSON.stringify(body, null, 2));
         
-        // Status updates අල්ලගන්න (Delivered ද නැද්ද බලන්න)
         if (body.entry && body.entry[0].changes[0].value.statuses) {
             let statusObj = body.entry[0].changes[0].value.statuses[0];
             console.log(`📊 Status Update: ID ${statusObj.id} is now ${statusObj.status}`);
@@ -138,21 +135,39 @@ router.post('/webhook', async (req, res) => {
                 
                 res.sendStatus(200); 
 
-                // 1. Get User Profile
-                const { data: userProfile } = await supabase.from('profiles').select('*').eq('whatsapp_number', phone_number).single();
+                // 1. Get Active Plan directly from 'payments' table based on Whatsapp Number
+                const { data: activePlan, error: planError } = await supabase.from('payments')
+                    .select('*')
+                    .eq('whatsapp_number', phone_number)
+                    .eq('status', 'approved')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .single();
 
-                if (!userProfile) {
-                    await sendWhatsAppMessage(phone_number, "ආයුබෝවන්! My Guru වෙත සාදරයෙන් පිළිගනිමු. 🎓\nකරුණාකර ලියාපදිංචි වන්න.");
+                if (!activePlan || activePlan.package_name === 'Free') {
+                    await sendWhatsAppMessage(phone_number, "ආයුබෝවන්! My Guru වෙත සාදරයෙන් පිළිගනිමු. 🎓\nWhatsApp AI සේවාව ලබා ගත හැක්කේ Premium සිසුන්ට පමණි. කරුණාකර අපගේ වෙබ් අඩවියෙන් ලියාපදිංචි වී Premium Plan එකක් ලබා ගන්න.\n👉 https://myguru.lumi-automation.com");
                     return;
                 }
 
-                // 2. Plan Check
-                const { data: activePlan } = await supabase.from('payments')
-                    .select('*').eq('user_id', userProfile.id).eq('status', 'approved')
-                    .order('created_at', { ascending: false }).limit(1).single();
+                // --- Credit Logic ---
+                let isUnlimited = activePlan.package_name.toLowerCase().includes('genius');
+                let maxCredits = isUnlimited ? 150 : 100;
 
-                if (!activePlan || activePlan.package_name === 'Free') {
-                    await sendWhatsAppMessage(phone_number, "🛑 කරුණාකර Upgrade කරන්න.");
+                // Use the user_id (text) from the payment record
+                let { data: userCredit } = await supabase.from('user_credits').select('*').eq('user_id', activePlan.user_id).single();
+                let today = new Date().toISOString().split('T')[0];
+
+                if (!userCredit) {
+                    const newCredit = { user_id: activePlan.user_id, total_used: 0, daily_used: 0, last_reset_date: today };
+                    await supabase.from('user_credits').insert([newCredit]);
+                    userCredit = newCredit;
+                } else if (userCredit.last_reset_date !== today) {
+                    await supabase.from('user_credits').update({ daily_used: 0, last_reset_date: today }).eq('user_id', activePlan.user_id);
+                    userCredit.daily_used = 0;
+                }
+
+                if ((!isUnlimited && userCredit.total_used >= maxCredits) || (isUnlimited && userCredit.daily_used >= maxCredits)) {
+                    await sendWhatsAppMessage(phone_number, "🛑 ඔයාගේ අද දවසේ ප්‍රශ්න සීමාව ඉක්මවා ඇත. හෙට නැවත උත්සාහ කරන්න.");
                     return;
                 }
 
@@ -205,6 +220,14 @@ router.post('/webhook', async (req, res) => {
                         const aiRes = await axios.post("http://127.0.0.1:5002/chat", payload);
                         if(aiRes.data && aiRes.data.answer) {
                             await sendWhatsAppMessage(phone_number, aiRes.data.answer);
+                            
+                            // Update Credits after successful response
+                            await supabase.from('user_credits')
+                                .update({ 
+                                    total_used: userCredit.total_used + 1,
+                                    daily_used: userCredit.daily_used + 1
+                                })
+                                .eq('user_id', activePlan.user_id);
                         }
                     } catch (error) {
                         console.error("AI Brain Error:", error.message);

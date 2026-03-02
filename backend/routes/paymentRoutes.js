@@ -12,38 +12,6 @@ router.post('/', async (req, res) => {
     console.log("📥 Receiving Payment Request for:", user_email);
 
     try {
-        // 🔥 STEP 0: ENSURE USER PROFILE EXISTS (Fix for WhatsApp Bot Issue)
-        // Check if profile exists, if not, create one automatically
-        const { data: existingProfile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user_id)
-            .single();
-
-        if (!existingProfile) {
-            console.log("➕ Creating missing user profile for:", user_email);
-            
-            // Set plan type based on the package
-            let planType = 'free'; // Default
-            if (package_name && package_name.toLowerCase().includes('genius')) planType = 'genius';
-            else if (package_name && package_name.toLowerCase().includes('scholar')) planType = 'scholar';
-            
-            let dailyLimit = planType === 'genius' ? 150 : (planType === 'scholar' ? 100 : 10);
-
-            await supabase.from('profiles').insert([{
-                id: user_id,
-                email: user_email,
-                full_name: user_email.split('@')[0], // Extract name from email as fallback
-                whatsapp_number: whatsapp_number, // We know frontend sends it as 947... now
-                plan_type: planType,
-                daily_credits_limit: dailyLimit
-            }]);
-        } else if (!existingProfile.whatsapp_number) {
-            // If profile exists but lacks whatsapp number, update it
-             console.log("🔄 Updating WhatsApp number for existing profile:", user_email);
-             await supabase.from('profiles').update({ whatsapp_number: whatsapp_number }).eq('id', user_id);
-        }
-
         // --- STEP A: Save to Database as 'pending' FIRST ---
         // This ensures the user gets a quick response without waiting for AI.
         const { data: payment, error } = await supabase
@@ -133,15 +101,7 @@ router.post('/', async (req, res) => {
                                 .update({ status: 'approved' })
                                 .eq('id', payment.id);
                             
-                            // 2. Update Profile Plan (Bonus: Ensure Profile reflects correct active plan)
-                            let newPlanType = package_name.toLowerCase().includes('genius') ? 'genius' : 'scholar';
-                            let newDailyLimit = newPlanType === 'genius' ? 150 : 100;
-                            await supabase.from('profiles').update({
-                                plan_type: newPlanType,
-                                daily_credits_limit: newDailyLimit
-                            }).eq('id', user_id);
-                            
-                            // 3. Mark Bank Transaction as Used (Prevent Reuse)
+                            // 2. Mark Bank Transaction as Used (Prevent Reuse)
                             await supabase
                                 .from('bank_transactions')
                                 .update({ is_matched: true })
@@ -209,16 +169,6 @@ router.put('/:id', async (req, res) => {
             .update({ status })
             .eq('id', req.params.id)
             .select();
-            
-        // If Admin manually approved, update profile
-        if(status === 'approved' && user_id && package_name) {
-             let newPlanType = package_name.toLowerCase().includes('genius') ? 'genius' : 'scholar';
-             let newDailyLimit = newPlanType === 'genius' ? 150 : 100;
-             await supabase.from('profiles').update({
-                 plan_type: newPlanType,
-                 daily_credits_limit: newDailyLimit
-             }).eq('id', user_id);
-        }
 
         if (error) return res.status(500).json({ error: error.message });
         res.json(data[0]);

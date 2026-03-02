@@ -36,6 +36,17 @@ export default function Checkout() {
     if (e.target.files[0]) setFile(e.target.files[0]);
   };
 
+  // 🔥 Helper function to format WhatsApp number properly
+  const formatWhatsAppNumber = (number) => {
+    let cleanNumber = number.replace(/\D/g, ''); // Remove non-digits
+    if (cleanNumber.startsWith('0')) {
+        cleanNumber = '94' + cleanNumber.substring(1); // Replace leading '0' with '94'
+    } else if (!cleanNumber.startsWith('94')) {
+        cleanNumber = '94' + cleanNumber; // Add '94' if it doesn't have it
+    }
+    return cleanNumber;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) return setMsg({ type: 'error', text: 'Please log in first.' });
@@ -52,13 +63,16 @@ export default function Checkout() {
 
       const { data: { publicUrl } } = supabase.storage.from('slips').getPublicUrl(fileName);
 
+      // Format the number before sending
+      const formattedWhatsapp = formatWhatsAppNumber(whatsapp);
+
       await api.post('/payments', {
         user_id: userId,
         user_email: user.email,
         amount: parseFloat(planPrice.replace('Rs. ', '').replace(',', '')),
         package_name: planName,
         slip_url: publicUrl,
-        whatsapp_number: whatsapp,
+        whatsapp_number: formattedWhatsapp, // Send formatted number
         status: 'pending'
       });
 

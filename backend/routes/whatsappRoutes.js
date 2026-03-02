@@ -119,7 +119,6 @@ router.post('/webhook', async (req, res) => {
         let body = req.body;
         
         if (body.entry && body.entry[0].changes[0].value.statuses) {
-            let statusObj = body.entry[0].changes[0].value.statuses[0];
             return res.sendStatus(200);
         }
 
@@ -132,7 +131,7 @@ router.post('/webhook', async (req, res) => {
                 
                 res.sendStatus(200); 
 
-                // 1. Get Active Plan directly from 'payments' table based on Whatsapp Number
+                // 1. Check if user exists and has an active payment
                 const { data: activePlan, error: planError } = await supabase.from('payments')
                     .select('*')
                     .eq('whatsapp_number', phone_number)
@@ -146,23 +145,32 @@ router.post('/webhook', async (req, res) => {
                     return;
                 }
 
-                // --- Credit Logic ---
-                let isUnlimited = activePlan.package_name.toLowerCase().includes('genius');
-                let maxCredits = isUnlimited ? 150 : 100;
+                // 2. Fetch User Profile to check Web Credits (Daily limit & Usage)
+                const { data: userProfile } = await supabase.from('profiles')
+                    .select('*')
+                    .eq('id', activePlan.user_id)
+                    .single();
 
-                let { data: userCredit } = await supabase.from('user_credits').select('*').eq('user_id', activePlan.user_id).single();
-                let today = new Date().toISOString().split('T')[0];
-
-                if (!userCredit) {
-                    const newCredit = { user_id: activePlan.user_id, total_used: 0, daily_used: 0, last_reset_date: today };
-                    await supabase.from('user_credits').insert([newCredit]);
-                    userCredit = newCredit;
-                } else if (userCredit.last_reset_date !== today) {
-                    await supabase.from('user_credits').update({ daily_used: 0, last_reset_date: today }).eq('user_id', activePlan.user_id);
-                    userCredit.daily_used = 0;
+                if (!userProfile) {
+                    await sendWhatsAppMessage(phone_number, "⚠️ ඔබගේ ගිණුමේ දෝෂයක් ඇත. කරුණාකර Admin සම්බන්ධ කරගන්න.");
+                    return;
                 }
 
-                if ((!isUnlimited && userCredit.total_used >= maxCredits) || (isUnlimited && userCredit.daily_used >= maxCredits)) {
+                // Check Daily Credit Limit
+                let maxCredits = userProfile.daily_credits_limit || 0;
+                let usedCredits = userProfile.credits_used || 0;
+                let today = new Date().toISOString().split('T')[0];
+                let lastResetDate = userProfile.last_reset_date ? userProfile.last_reset_date.split('T')[0] : null;
+
+                // Reset logic if it's a new day
+                if (lastResetDate !== today) {
+                    usedCredits = 0;
+                    await supabase.from('profiles')
+                        .update({ credits_used: 0, last_reset_date: today })
+                        .eq('id', userProfile.id);
+                }
+
+                if (usedCredits >= maxCredits) {
                     await sendWhatsAppMessage(phone_number, "🛑 ඔයාගේ අද දවසේ ප්‍රශ්න සීමාව ඉක්මවා ඇත. හෙට නැවත උත්සාහ කරන්න.\n🛑 You have reached your daily question limit. Please try again tomorrow.");
                     return;
                 }
@@ -197,13 +205,13 @@ router.post('/webhook', async (req, res) => {
                         
                         let subjectListMsg = "";
                         
-                        // Translations for the Subjects List based on Medium
+                        // Translations for the Subjects List without emojis (Professional Look)
                         if (msg_text === 'Sinhala') {
-                            subjectListMsg = `✅ සිංහල මාධ්‍යය තෝරාගත්තා!\n\nදැන් විද්‍යාව, ගණිතය වැනි අදාළ විෂය තෝරන්න (අංකය පමණක් එවන්න):\n\n1️⃣ විද්‍යාව (Science)\n2️⃣ ගණිතය (Mathematics)\n3️⃣ ඉතිහාසය (History)\n4️⃣ බුද්ධ ධර්මය (Buddhism)\n5️⃣ සිංහල (Sinhala)\n6️⃣ ඉංග්‍රීසි (English)\n7️⃣ තොරතුරු හා සන්නිවේදන තාක්ෂණය (ICT)\n8️⃣ වාණිජ හා ගිණුම්කරණය (Commerce)\n9️⃣ සෞඛ්‍යය හා ශාරීරික අධ්‍යාපනය (Health)\n🔟 භූගෝල විද්‍යාව (Geography)\n1️⃣1️⃣ පුරවැසි අධ්‍යාපනය (Civic)\n1️⃣2️⃣ මාධ්‍ය අධ්‍යයනය (Media)\n1️⃣3️⃣ දෙමළ (Tamil)\n1️⃣4️⃣ කෘෂිකර්මය (Agriculture)`;
+                            subjectListMsg = `✅ සිංහල මාධ්‍යය තෝරාගත්තා!\n\nදැන් විද්‍යාව, ගණිතය වැනි අදාළ විෂය තෝරන්න (අංකය පමණක් එවන්න):\n\n1. විද්‍යාව (Science)\n2. ගණිතය (Mathematics)\n3. ඉතිහාසය (History)\n4. බුද්ධ ධර්මය (Buddhism)\n5. සිංහල (Sinhala)\n6. ඉංග්‍රීසි (English)\n7. තොරතුරු හා සන්නිවේදන තාක්ෂණය (ICT)\n8. වාණිජ හා ගිණුම්කරණය (Commerce)\n9. සෞඛ්‍යය හා ශාරීරික අධ්‍යාපනය (Health)\n10. භූගෝල විද්‍යාව (Geography)\n11. පුරවැසි අධ්‍යාපනය (Civic)\n12. මාධ්‍ය අධ්‍යයනය (Media)\n13. දෙමළ (Tamil)\n14. කෘෂිකර්මය (Agriculture)`;
                         } else if (msg_text === 'English') {
-                            subjectListMsg = `✅ English Medium Selected!\n\nPlease select the subject by replying with its number:\n\n1️⃣ Science\n2️⃣ Mathematics\n3️⃣ History\n4️⃣ Buddhism\n5️⃣ Sinhala\n6️⃣ English\n7️⃣ ICT\n8️⃣ Commerce\n9️⃣ Health\n🔟 Geography\n1️⃣1️⃣ Civic\n1️⃣2️⃣ Media\n1️⃣3️⃣ Tamil\n1️⃣4️⃣ Agriculture`;
+                            subjectListMsg = `✅ English Medium Selected!\n\nPlease select the subject by replying with its number:\n\n1. Science\n2. Mathematics\n3. History\n4. Buddhism\n5. Sinhala\n6. English\n7. ICT\n8. Commerce\n9. Health\n10. Geography\n11. Civic\n12. Media\n13. Tamil\n14. Agriculture`;
                         } else if (msg_text === 'Tamil') {
-                            subjectListMsg = `✅ தமிழ் ஊடகம் தேர்ந்தெடுக்கப்பட்டது!\n\nதயவுசெய்து பாடத்தின் எண்ணை மட்டும் அனுப்பவும்:\n\n1️⃣ விஞ்ஞானம் (Science)\n2️⃣ கணிதம் (Mathematics)\n3️⃣ வரலாறு (History)\n4️⃣ பௌத்த தர்மம் (Buddhism)\n5️⃣ சிங்களம் (Sinhala)\n6️⃣ ஆங்கிலம் (English)\n7️⃣ தகவல் தொழில்நுட்பம் (ICT)\n8️⃣ வர்த்தகம் (Commerce)\n9️⃣ சுகாதாரம் (Health)\n🔟 புவியியல் (Geography)\n1️⃣1️⃣ குடியியல் (Civic)\n1️⃣2️⃣ ஊடகம் (Media)\n1️⃣3️⃣ தமிழ் (Tamil)\n1️⃣4️⃣ விவசாயம் (Agriculture)`;
+                            subjectListMsg = `✅ தமிழ் ஊடகம் தேர்ந்தெடுக்கப்பட்டது!\n\nதயவுசெய்து பாடத்தின் எண்ணை மட்டும் அனுப்பவும்:\n\n1. விஞ்ஞானம் (Science)\n2. கணிதம் (Mathematics)\n3. வரலாறு (History)\n4. பௌத்த தர்மம் (Buddhism)\n5. சிங்களம் (Sinhala)\n6. ஆங்கிலம் (English)\n7. தகவல் தொழில்நுட்பம் (ICT)\n8. வர்த்தகம் (Commerce)\n9. சுகாதாரம் (Health)\n10. புவியியல் (Geography)\n11. குடியியல் (Civic)\n12. ஊடகம் (Media)\n13. தமிழ் (Tamil)\n14. விவசாயம் (Agriculture)`;
                         }
 
                         await sendWhatsAppMessage(phone_number, subjectListMsg);
@@ -229,9 +237,8 @@ router.post('/webhook', async (req, res) => {
                         await supabase.from('whatsapp_sessions').update({ state: 'CHATTING', subject: chosenSubject }).eq('phone', phone_number);
                         
                         let welcomeMsg = "";
-                        let medium = session.medium; // This was just saved, but we get it from DB session
+                        let medium = session.medium;
                         
-                        // Translations for Welcome Message
                         if (medium === 'Sinhala') {
                             welcomeMsg = `🎉 ${chosenSubject} තෝරාගත්තා!\n\nආයුබෝවන් පුතේ! මම My Guru, ලංකාවේ පළවෙනි AI ගුරුවරයා. 🎓\nඔයාට ${chosenSubject} විෂය සම්බන්ධව මොනවද දැනගන්න ඕනෙ?\n\n(ප්‍රශ්නයක් ටයිප් කරලා එවන්න, නැත්නම් Photo එකක් හරි Voice note එකක් හරි එවන්න පුළුවන් 📸🎤)\n\n_වෙනත් විෂයයක් තෝරාගැනීමට අවශ්‍ය නම් ඕනෑම වෙලාවක #menu ලෙස යවන්න._`;
                         } else if (medium === 'English') {
@@ -244,7 +251,6 @@ router.post('/webhook', async (req, res) => {
 
                         await sendWhatsAppMessage(phone_number, welcomeMsg);
                     } else {
-                        // Error Messages
                         let errorMsg = "⚠️ කරුණාකර නිවැරදි විෂය අංකය (1 සිට 14 දක්වා) පමණක් එවන්න.\n⚠️ Please reply with a valid subject number (1 to 14).";
                         await sendWhatsAppMessage(phone_number, errorMsg);
                     }
@@ -279,21 +285,16 @@ router.post('/webhook', async (req, res) => {
                     }
 
                     try {
-                        // Show typing indicator or initial response (Optional, removed to save time/avoid spam)
-                        
                         // Call Python Brain
                         const aiRes = await axios.post("http://127.0.0.1:5002/chat", payload);
                         
                         if(aiRes.data && aiRes.data.answer) {
                             await sendWhatsAppMessage(phone_number, aiRes.data.answer);
                             
-                            // Update Credits after successful response
-                            await supabase.from('user_credits')
-                                .update({ 
-                                    total_used: userCredit.total_used + 1,
-                                    daily_used: userCredit.daily_used + 1
-                                })
-                                .eq('user_id', activePlan.user_id);
+                            // 🔥 Update Credits in the main 'profiles' table so Web UI sees it!
+                            await supabase.from('profiles')
+                                .update({ credits_used: usedCredits + 1 })
+                                .eq('id', userProfile.id);
                         }
                     } catch (error) {
                         console.error("AI Brain Error:", error.message);

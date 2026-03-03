@@ -42,6 +42,10 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# --- IN-MEMORY CHAT HISTORY ---
+# ලමයින්ගේ අන්තිම ප්‍රශ්න 3 මතක තියාගන්න මේක පාවිච්චි කරනවා
+USER_MEMORY = {}
+
 # --- HELPER FUNCTIONS ---
 def get_random_client():
     return genai.Client(api_key=random.choice(API_KEYS))
@@ -66,7 +70,8 @@ def safe_google_api_call(contents, is_json=False):
                     types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
                     types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
                 ],
-                temperature=0.3 # Lower temperature for more accurate, less hallucinatory answers
+                # 🔥 සංකීර්ණ ගණිත/විද්‍යා ප්‍රශ්න වලදී 100% ක් නිවැරදි වෙන්න Temperature එක 0.1 කළා
+                temperature=0.1 
             )
             
             response = client.models.generate_content(
@@ -116,6 +121,7 @@ class ChatRequest(BaseModel):
     medium: str
     image_data: str | None = None
     audio_data: str | None = None
+    session_id: str | None = "default" # 🔥 මතකය වෙන් කරගන්න අලුතෙන් දැම්මා
 
 class DeleteRequest(BaseModel):
     ids: list[int]
@@ -128,7 +134,7 @@ class DeletePagesRequest(BaseModel):
     pages: list[int]
 
 # --- BRAIN LOGIC ---
-def generate_smart_answer(context, question, subject, medium, img=None, audio_part=None):
+def generate_smart_answer(context, question, subject, medium, history_text="", img=None, audio_part=None):
     # Categorize Context
     marking_schemes = ""
     textbooks = ""
@@ -148,14 +154,16 @@ def generate_smart_answer(context, question, subject, medium, img=None, audio_pa
 
     prompt = f"""
     You are 'My Guru', an elite and highly professional examiner and expert teacher in Sri Lanka.
-    Your task is to provide 100% accurate, highly structured, and deeply explanatory answers. NO HALLUCINATIONS. NO LIES. Do not generate long, irrelevant paragraphs ("wal pal"). Keep it focused, highly informative, and directly to the point.
+    Your task is to provide 100% accurate, highly structured, and deeply explanatory answers. NO HALLUCINATIONS. NO LIES. Keep it focused, highly informative, and directly to the point.
 
     CURRENT SUBJECT: {subject}
     TARGET MEDIUM: {medium}
     
     {lang_instruction}
 
-    STUDENT'S QUESTION:
+    {history_text}
+
+    STUDENT'S CURRENT QUESTION:
     {question}
 
     --- KNOWLEDGE BASE ---
@@ -167,36 +175,35 @@ def generate_smart_answer(context, question, subject, medium, img=None, audio_pa
 
     --- CRITICAL EXAMINER INSTRUCTIONS ---
 
-    1. **TOPIC RESTRICTION:** You must ONLY answer questions related to the SUBJECT: '{subject}'. If the user asks a question completely unrelated to '{subject}' (e.g., asking a Science question when the subject is History), politely refuse to answer and ask them to switch the subject using the #menu command. 
-       * Sinhala Refusal: "කරුණාකර '{subject}' විෂයට අදාළ ප්‍රශ්න පමණක් යොමු කරන්න. වෙනත් විෂයයක් සඳහා #menu ලෙස යවා විෂය වෙනස් කරන්න."
-       * English Refusal: "Please ask questions related to '{subject}' only. To ask about another subject, type #menu and change the subject."
+    1. **TOPIC RESTRICTION:** You must ONLY answer questions related to the SUBJECT: '{subject}'. If the user asks a question completely unrelated to '{subject}', politely refuse to answer and ask them to switch the subject using the #menu command. 
 
-    2. **KNOWLEDGE HIERARCHY (HOW TO FIND THE ANSWER):**
-       * **STEP 1:** Search the [PRIORITY 1: MARKING SCHEMES]. If the exact answer is there, use it as the core of your response.
-       * **STEP 2:** If not in Marking Schemes, search the [PRIORITY 2: TEXTBOOKS]. If the concept is there, construct the answer based on it.
-       * **STEP 3:** If the answer is NOT in the provided Context at all, use your vast internal knowledge (Social Knowledge/General AI Knowledge) to construct a perfect, accurate answer. NEVER say "It is not in the textbook" or "I cannot answer". ALWAYS provide the answer.
-       * **WARNING FOR MATHS & SCIENCE:** Double-check all calculations and formulas. Provide step-by-step working. Do not output wrong mathematical answers.
+    2. **KNOWLEDGE HIERARCHY:** * Search [PRIORITY 1: MARKING SCHEMES] and [PRIORITY 2: TEXTBOOKS].
+       * If the answer is NOT in the provided Context, use your vast internal factual knowledge to construct a perfect, 100% accurate answer. ALWAYS provide the answer, never say "I don't know".
 
-    3. **MCQ QUESTIONS:** If the student asks a Multiple Choice Question (MCQ):
-       * First, state the Correct Answer clearly.
-       * Second, clearly explain *WHY* it is the correct answer and *WHY* the other options are wrong.
+    3. **STRICT RULES FOR MATHEMATICS, SCIENCE & COMPLEX TOPICS (e.g., Rocket Science, Advanced Physics):**
+       * Assume the persona of a world-class scientist/mathematician.
+       * Solve problems STRICTLY step-by-step using logical 'Chain of Thought' reasoning.
+       * Verify all formulas, calculations, and scientific constraints before generating the final output. ZERO hallucinations allowed.
+       * Explain complex concepts accurately. Do not oversimplify them to the point of being incorrect.
+       * Double-check your arithmetic and geometric relationships.
+       * State the exact mathematical/scientific theorem or formula used at each step.
+       * Highlight the final answer clearly at the end.
 
-    4. **STRUCTURE & FORMATTING (MANDATORY):**
-       * Be Professional. Do not use words like "(Textbook)", "(Marking Scheme)", "හැඳින්වීම:", "කරුණු:", "උදාහරණ:". Just weave them naturally into the text.
+    4. **MCQ QUESTIONS:** If it is a Multiple Choice Question (MCQ):
+       * State the Correct Answer clearly.
+       * Explain *WHY* it is correct and *WHY* the other options are wrong.
+
+    5. **STRUCTURE & FORMATTING (MANDATORY):**
        * **DO NOT USE ASTERISKS (**) FOR BOLDING.** Use plain text.
+       * Do not output tags like "(Textbook)" or "Marking Scheme".
        * Break the answer into logical paragraphs.
-       * If it's a large question (e.g., Question 03 with parts a, b, c), answer EACH sub-question separately and clearly.
-       * For every main point, provide:
-         - A clear explanation.
-         - A relevant, practical example to make it easy to understand.
-       * Use emojis (📝, ✅, 📌, 💡) to make it visually appealing but keep it professional. Do not overdo it.
-
-    5. **TONE:** Be encouraging, intelligent, and highly professional. Never be boring.
+       * Use simple emojis (📝, ✅, 📌, 💡) to make it visually appealing but highly professional.
+       * Tone: Encouraging, intelligent, and strictly accurate.
     """
     
     contents = [prompt]
     if img: 
-        contents.extend([img, "Analyze this image perfectly. If it's a question paper, read every question carefully. Do not miss any details."])
+        contents.extend([img, "Analyze this image perfectly. If it's a question paper, read every question carefully. If it's a math/science problem, solve it with strict logical steps."])
     
     if audio_part:
         contents.extend([audio_part, "Listen to this audio carefully and answer the student's question based on the audio."])
@@ -218,6 +225,7 @@ def chat_endpoint(request: ChatRequest):
     img = None
     audio_part = None
     
+    # 1. Media Handling
     if request.image_data:
         try:
             base64_str = request.image_data.split("base64,")[1] if "base64," in request.image_data else request.image_data
@@ -241,6 +249,18 @@ def chat_endpoint(request: ChatRequest):
 
     safe_question = request.question if request.question.strip() else "Please analyze the provided media (image/audio) and answer accurately."
     
+    # 2. History Handling (Memory) 🔥
+    session_id = request.session_id
+    history_data = USER_MEMORY.get(session_id, [])
+    
+    history_text = ""
+    if history_data:
+        history_text = "--- RECENT CONVERSATION HISTORY (REMEMBER THIS) ---\n"
+        for interaction in history_data:
+            history_text += f"Student: {interaction['q']}\nMy Guru: {interaction['a']}\n\n"
+        history_text += "--- END OF HISTORY ---\n"
+
+    # 3. Keyword Extraction
     kw_contents = []
     if img:
         kw_contents.append(img)
@@ -288,8 +308,14 @@ def chat_endpoint(request: ChatRequest):
                 print(f"⚠️ DB Error: {db_err}")
                 continue 
 
+    # 4. Generate Answer
     try:
-        ans = generate_smart_answer(ctx, safe_question, request.subject, request.medium, img, audio_part)
+        ans = generate_smart_answer(ctx, safe_question, request.subject, request.medium, history_text, img, audio_part)
+        
+        # 🔥 Save to Memory (Keep only last 3 interactions to save tokens)
+        history_data.append({"q": safe_question, "a": ans})
+        USER_MEMORY[session_id] = history_data[-3:]
+        
         return {"answer": ans}
     except Exception as final_err:
         return {"answer": f"⚠️ Error: {str(final_err)}"}

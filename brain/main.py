@@ -43,7 +43,6 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- IN-MEMORY CHAT HISTORY ---
-# ලමයින්ගේ අන්තිම ප්‍රශ්න 3 මතක තියාගන්න මේක පාවිච්චි කරනවා
 USER_MEMORY = {}
 
 # --- HELPER FUNCTIONS ---
@@ -70,8 +69,7 @@ def safe_google_api_call(contents, is_json=False):
                     types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
                     types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
                 ],
-                # 🔥 සංකීර්ණ ගණිත/විද්‍යා ප්‍රශ්න වලදී 100% ක් නිවැරදි වෙන්න Temperature එක 0.1 කළා
-                temperature=0.1 
+                temperature=0.2 # Balanced for accuracy and good explanations
             )
             
             response = client.models.generate_content(
@@ -80,7 +78,7 @@ def safe_google_api_call(contents, is_json=False):
                 config=config
             )
             
-            # 🔥 TOKEN TRACKING & COST CALCULATION
+            # TOKEN TRACKING & COST CALCULATION
             try:
                 usage = getattr(response, 'usage_metadata', None)
                 if usage:
@@ -90,7 +88,7 @@ def safe_google_api_call(contents, is_json=False):
                     
                     if total_tokens > 0:
                         cost = ((in_tokens / 1000000.0) * 0.10) + ((out_tokens / 1000000.0) * 0.40)
-                        print(f"💰 [Request Cost] Tokens: {total_tokens} (In: {in_tokens} | Out: {out_tokens}) | Cost: ${cost:.6f}")
+                        print(f"💰 [Request Cost] Tokens: {total_tokens} | Cost: ${cost:.6f}")
                         
                         supabase.table("token_usage").insert({
                             "input_tokens": in_tokens,
@@ -121,7 +119,7 @@ class ChatRequest(BaseModel):
     medium: str
     image_data: str | None = None
     audio_data: str | None = None
-    session_id: str | None = "default" # 🔥 මතකය වෙන් කරගන්න අලුතෙන් දැම්මා
+    session_id: str | None = "default" 
 
 class DeleteRequest(BaseModel):
     ids: list[int]
@@ -135,7 +133,6 @@ class DeletePagesRequest(BaseModel):
 
 # --- BRAIN LOGIC ---
 def generate_smart_answer(context, question, subject, medium, history_text="", img=None, audio_part=None):
-    # Categorize Context
     marking_schemes = ""
     textbooks = ""
     
@@ -152,9 +149,10 @@ def generate_smart_answer(context, question, subject, medium, history_text="", i
 
     lang_instruction = "You MUST reply entirely in Sinhala." if medium.lower() == "sinhala" else "You MUST reply entirely in English."
 
+    # 🔥 MASSIVELY UPDATED PROMPT
     prompt = f"""
-    You are 'My Guru', an elite and highly professional examiner and expert teacher in Sri Lanka.
-    Your task is to provide 100% accurate, highly structured, and deeply explanatory answers. NO HALLUCINATIONS. NO LIES. Keep it focused, highly informative, and directly to the point.
+    You are an elite and highly professional examiner and expert teacher in Sri Lanka.
+    Your task is to provide 100% accurate, highly structured, and deeply explanatory answers. NO HALLUCINATIONS. Make the answer engaging and never boring.
 
     CURRENT SUBJECT: {subject}
     TARGET MEDIUM: {medium}
@@ -167,7 +165,7 @@ def generate_smart_answer(context, question, subject, medium, history_text="", i
     {question}
 
     --- KNOWLEDGE BASE ---
-    [PRIORITY 1: MARKING SCHEMES]
+    [PRIORITY 1: MARKING SCHEMES & PAST PAPERS]
     {marking_schemes if marking_schemes else "None available."}
 
     [PRIORITY 2: TEXTBOOKS]
@@ -175,43 +173,43 @@ def generate_smart_answer(context, question, subject, medium, history_text="", i
 
     --- CRITICAL EXAMINER INSTRUCTIONS ---
 
-    1. **TOPIC RESTRICTION:** You must ONLY answer questions related to the SUBJECT: '{subject}'. If the user asks a question completely unrelated to '{subject}', politely refuse to answer and ask them to switch the subject using the #menu command. 
+    1. **STRICT GREETING RULE (MANDATORY):** * DO NOT say "Hi", "Hello", "ආයුබෝවන්", or "Welcome".
+       * DO NOT introduce yourself (e.g., "I am My Guru"). 
+       * Address the student affectionately ONLY AS "පුතේ" (Puthe) at the beginning of your response. (e.g., "පුතේ, මෙන්න පිළිතුර:")
 
-    2. **KNOWLEDGE HIERARCHY:** * Search [PRIORITY 1: MARKING SCHEMES] and [PRIORITY 2: TEXTBOOKS].
-       * If the answer is NOT in the provided Context, use your vast internal factual knowledge to construct a perfect, 100% accurate answer. ALWAYS provide the answer, never say "I don't know".
+    2. **STRICT KNOWLEDGE HIERARCHY (FOLLOW THIS ORDER):**
+       * STEP 1: Always check [PRIORITY 1: MARKING SCHEMES & PAST PAPERS] first. Base your answer heavily on this to ensure exam accuracy.
+       * STEP 2: Check [PRIORITY 2: TEXTBOOKS] next for elaboration.
+       * STEP 3: If not in the provided Context, use your vast internal factual knowledge to provide a superb, 100% accurate answer. ALWAYS answer. NEVER say "I don't know" or "Not in textbook".
 
-    3. **STRICT RULES FOR MATHEMATICS, SCIENCE & COMPLEX TOPICS (e.g., Rocket Science, Advanced Physics):**
-       * Assume the persona of a world-class scientist/mathematician.
-       * Solve problems STRICTLY step-by-step using logical 'Chain of Thought' reasoning.
-       * Verify all formulas, calculations, and scientific constraints before generating the final output. ZERO hallucinations allowed.
-       * Explain complex concepts accurately. Do not oversimplify them to the point of being incorrect.
-       * Double-check your arithmetic and geometric relationships.
-       * State the exact mathematical/scientific theorem or formula used at each step.
-       * Highlight the final answer clearly at the end.
+    3. **HOW TO ANSWER DIFFERENT QUESTION TYPES:**
+       * **For MCQs:** DO NOT just give the letter. First, state the Correct Answer clearly. Then, explain in detail WHY it is the correct answer. Finally, explain WHY the other options are wrong.
+       * **For Large/Multi-part Questions (e.g., a, b, c or i, ii):** You MUST answer EVERY SINGLE sub-question. Do not skip any. Explain each sub-question beautifully with details.
+       * **For General/Theoretical Questions:** Explain thoroughly. Break the answer down into clear 'Key Points'. Always provide a practical, real-world Example (උදාහරණයක්) to help the student understand perfectly. Make it interesting!
+       * **For Math/Science:** Solve step-by-step with 100% accuracy. Do not hallucinate geometric points.
 
-    4. **MCQ QUESTIONS:** If it is a Multiple Choice Question (MCQ):
-       * State the Correct Answer clearly.
-       * Explain *WHY* it is correct and *WHY* the other options are wrong.
-
-    5. **STRUCTURE & FORMATTING (MANDATORY):**
-       * **DO NOT USE ASTERISKS (**) FOR BOLDING.** Use plain text.
-       * Do not output tags like "(Textbook)" or "Marking Scheme".
-       * Break the answer into logical paragraphs.
-       * Use simple emojis (📝, ✅, 📌, 💡) to make it visually appealing but highly professional.
-       * Tone: Encouraging, intelligent, and strictly accurate.
+    4. **FORMATTING & ASTERISKS RULE (CRITICAL):**
+       * DO NOT USE ANY ASTERISKS (* or **) FOR BOLDING OR BULLET POINTS. Use standard dashes (-) or numbers (1, 2, 3) for lists.
+       * Use a few relevant emojis (📝, ✅, 📌, 💡, 🎯) to make the text beautiful and engaging.
+       * Keep paragraphs clear and well-spaced. 
     """
     
     contents = [prompt]
     if img: 
-        contents.extend([img, "Analyze this image perfectly. If it's a question paper, read every question carefully. If it's a math/science problem, solve it with strict logical steps."])
+        contents.extend([img, "Analyze this image carefully. If it's an MCQ, explain all options. Do not hallucinate."])
     
     if audio_part:
-        contents.extend([audio_part, "Listen to this audio carefully and answer the student's question based on the audio."])
+        contents.extend([audio_part, "Listen to this audio carefully and answer the student's question."])
         
     res, err = safe_google_api_call(contents)
     
     if res and hasattr(res, 'text') and res.text:
-        return res.text
+        # 🔥 CLEANUP: Removing ALL ugly asterisks from the output
+        cleaned_text = res.text
+        cleaned_text = cleaned_text.replace('**', '') # Remove bold asterisks
+        cleaned_text = cleaned_text.replace('* ', '- ') # Convert bullet asterisks to dashes
+        cleaned_text = cleaned_text.replace(' *', ' -') # Edge cases
+        return cleaned_text
         
     error_msg_si = f"⚠️ සිස්ටම් එක කාර්යබහුලයි. (Error: {err}). කරුණාකර නැවත උත්සාහ කරන්න පුතේ."
     error_msg_en = f"⚠️ The system is currently busy. (Error: {err}). Please try again."
@@ -225,7 +223,6 @@ def chat_endpoint(request: ChatRequest):
     img = None
     audio_part = None
     
-    # 1. Media Handling
     if request.image_data:
         try:
             base64_str = request.image_data.split("base64,")[1] if "base64," in request.image_data else request.image_data
@@ -249,7 +246,6 @@ def chat_endpoint(request: ChatRequest):
 
     safe_question = request.question if request.question.strip() else "Please analyze the provided media (image/audio) and answer accurately."
     
-    # 2. History Handling (Memory) 🔥
     session_id = request.session_id
     history_data = USER_MEMORY.get(session_id, [])
     
@@ -260,7 +256,6 @@ def chat_endpoint(request: ChatRequest):
             history_text += f"Student: {interaction['q']}\nMy Guru: {interaction['a']}\n\n"
         history_text += "--- END OF HISTORY ---\n"
 
-    # 3. Keyword Extraction
     kw_contents = []
     if img:
         kw_contents.append(img)
@@ -294,7 +289,6 @@ def chat_endpoint(request: ChatRequest):
         
         for term in search_terms:
             try:
-                # Search using the provided subject and medium
                 query = supabase.table("documents").select("content, metadata").eq("metadata->>subject", request.subject).eq("metadata->>medium", request.medium).ilike("content", f"%{term}%").limit(5)
                 res = query.execute()
                 
@@ -308,11 +302,9 @@ def chat_endpoint(request: ChatRequest):
                 print(f"⚠️ DB Error: {db_err}")
                 continue 
 
-    # 4. Generate Answer
     try:
         ans = generate_smart_answer(ctx, safe_question, request.subject, request.medium, history_text, img, audio_part)
         
-        # 🔥 Save to Memory (Keep only last 3 interactions to save tokens)
         history_data.append({"q": safe_question, "a": ans})
         USER_MEMORY[session_id] = history_data[-3:]
         

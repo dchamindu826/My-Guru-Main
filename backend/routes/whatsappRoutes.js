@@ -121,7 +121,6 @@ router.post('/webhook', async (req, res) => {
                 
                 res.sendStatus(200); 
 
-                // 1. Get Active Plan directly from 'payments' table based on Whatsapp Number (100% Reliable)
                 const { data: activePlan } = await supabase.from('payments')
                     .select('*')
                     .eq('whatsapp_number', phone_number)
@@ -135,7 +134,6 @@ router.post('/webhook', async (req, res) => {
                     return;
                 }
 
-                // Safely try to get profile for Name & Web Credits (Do NOT block if it fails)
                 const { data: userProfile } = await supabase.from('profiles').select('*').eq('id', activePlan.user_id).single();
                 let studentName = userProfile && userProfile.full_name ? userProfile.full_name : 'පුතේ';
 
@@ -153,8 +151,6 @@ router.post('/webhook', async (req, res) => {
                 } else if (userCredit.last_reset_date !== today) {
                     await supabase.from('user_credits').update({ daily_used: 0, last_reset_date: today }).eq('user_id', activePlan.user_id);
                     userCredit.daily_used = 0;
-                    
-                    // Reset Web UI credits if profile exists
                     if (userProfile) {
                         await supabase.from('profiles').update({ credits_used: 0, last_reset_date: today }).eq('id', userProfile.id);
                     }
@@ -185,15 +181,11 @@ router.post('/webhook', async (req, res) => {
                 }
 
                 // State Machine Logic
-                
-                // STATE 1: CHOOSING MEDIUM
                 if (session.state === 'CHOOSING_MEDIUM') {
                     if (['Sinhala', 'English', 'Tamil'].includes(msg_text)) {
                         await supabase.from('whatsapp_sessions').update({ state: 'CHOOSING_SUBJECT', medium: msg_text }).eq('phone', phone_number);
                         
                         let subjectListMsg = "";
-                        
-                        // 🔥 NO ICONS, JUST PROFESSIONAL NUMBERS
                         if (msg_text === 'Sinhala') {
                             subjectListMsg = `✅ සිංහල මාධ්‍යය තෝරාගත්තා!\n\nදැන් විද්‍යාව, ගණිතය වැනි අදාළ විෂය තෝරන්න (අංකය පමණක් එවන්න):\n\n1. විද්‍යාව (Science)\n2. ගණිතය (Mathematics)\n3. ඉතිහාසය (History)\n4. බුද්ධ ධර්මය (Buddhism)\n5. සිංහල (Sinhala)\n6. ඉංග්‍රීසි (English)\n7. තොරතුරු හා සන්නිවේදන තාක්ෂණය (ICT)\n8. වාණිජ හා ගිණුම්කරණය (Commerce)\n9. සෞඛ්‍යය හා ශාරීරික අධ්‍යාපනය (Health)\n10. භූගෝල විද්‍යාව (Geography)\n11. පුරවැසි අධ්‍යාපනය (Civic)\n12. මාධ්‍ය අධ්‍යයනය (Media)\n13. දෙමළ (Tamil)\n14. කෘෂිකර්මය (Agriculture)`;
                         } else if (msg_text === 'English') {
@@ -201,7 +193,6 @@ router.post('/webhook', async (req, res) => {
                         } else if (msg_text === 'Tamil') {
                             subjectListMsg = `✅ தமிழ் ஊடகம் தேர்ந்தெடுக்கப்பட்டது!\n\nதயவுசெய்து பாடத்தின் எண்ணை மட்டும் அனுப்பவும்:\n\n1. விஞ்ஞானம் (Science)\n2. கணிதம் (Mathematics)\n3. வரலாறு (History)\n4. பௌத்த தர்மம் (Buddhism)\n5. சிங்களம் (Sinhala)\n6. ஆங்கிலம் (English)\n7. தகவல் தொழில்நுட்பம் (ICT)\n8. வர்த்தகம் (Commerce)\n9. சுகாதாரம் (Health)\n10. புவியியல் (Geography)\n11. குடியியல் (Civic)\n12. ஊடகம் (Media)\n13. தமிழ் (Tamil)\n14. விவசாயம் (Agriculture)`;
                         }
-
                         await sendWhatsAppMessage(phone_number, subjectListMsg);
                     } else {
                         await sendMediumSelectionButtons(phone_number);
@@ -209,7 +200,6 @@ router.post('/webhook', async (req, res) => {
                     return;
                 }
 
-                // STATE 2: CHOOSING SUBJECT
                 if (session.state === 'CHOOSING_SUBJECT') {
                     const subjectsMap = {
                         '1': 'Science', '2': 'Mathematics', '3': 'History', '4': 'Buddhism', '5': 'Sinhala',
@@ -223,14 +213,21 @@ router.post('/webhook', async (req, res) => {
                         await supabase.from('whatsapp_sessions').update({ state: 'CHATTING', subject: chosenSubject }).eq('phone', phone_number);
                         
                         let welcomeMsg = "";
+                        let tipMsg = ""; // 🔥 Special tip for Maths & Science
                         let medium = session.medium;
+
+                        if (['Science', 'Mathematics'].includes(chosenSubject)) {
+                            if (medium === 'Sinhala') tipMsg = "\n\n💡 විශේෂ උපදෙස්: රූප සහිත ප්‍රශ්න එවන විට, රූපයේ ඇති දත්ත (උදා: කෝණ, දිග) ටයිප් කර එවීමෙන් වඩාත් නිවැරදි පිළිතුරක් ලබා ගත හැක.";
+                            else if (medium === 'English') tipMsg = "\n\n💡 Pro Tip: When sending image questions, typing the given data (e.g., angles, lengths) along with it will give you a 100% accurate answer.";
+                            else if (medium === 'Tamil') tipMsg = "\n\n💡 குறிப்பு: படங்களை அனுப்பும்போது, அதில் உள்ள தரவுகளையும் (உ-ம்: கோணங்கள்) டைப் செய்து அனுப்பினால் மிகச் சரியான விடையைப் பெறலாம்.";
+                        }
                         
                         if (medium === 'Sinhala') {
-                            welcomeMsg = `🎉 ${chosenSubject} තෝරාගත්තා!\n\nආයුබෝවන් ${studentName}! 👋\nමම My Guru, ලංකාවේ පළවෙනි AI ගුරුවරයා. 🎓\nඔයාට තියෙන ${chosenSubject} ප්‍රශ්න මගෙන් අහන්න.\n\n(Photo එකක් හෝ Voice note එකක් වුනත් එවන්න පුළුවන් 📸🎤)\n\n_මෙනුව වෙනස් කිරීමට ඕනෑම වෙලාවක #menu ලෙස යවන්න._`;
+                            welcomeMsg = `🎉 ${chosenSubject} තෝරාගත්තා!\n\nආයුබෝවන් ${studentName}! 👋\nඔයාට තියෙන ${chosenSubject} ප්‍රශ්න මගෙන් අහන්න.\n\n(Photo එකක් හෝ Voice note එකක් වුනත් එවන්න පුළුවන් 📸🎤)${tipMsg}\n\n_මෙනුව වෙනස් කිරීමට ඕනෑම වෙලාවක #menu ලෙස යවන්න._`;
                         } else if (medium === 'English') {
-                            welcomeMsg = `🎉 ${chosenSubject} Selected!\n\nHello ${studentName}! 👋\nI am My Guru, Sri Lanka's First AI Teacher. 🎓\nWhat are your questions regarding ${chosenSubject}?\n\n(You can send a Photo or a Voice note too 📸🎤)\n\n_To change the menu at any time, reply with #menu._`;
+                            welcomeMsg = `🎉 ${chosenSubject} Selected!\n\nHello ${studentName}! 👋\nWhat are your questions regarding ${chosenSubject}?\n\n(You can send a Photo or a Voice note too 📸🎤)${tipMsg}\n\n_To change the menu at any time, reply with #menu._`;
                         } else if (medium === 'Tamil') {
-                            welcomeMsg = `🎉 ${chosenSubject} தேர்ந்தெடுக்கப்பட்டது!\n\nவணக்கம்! 👋\nநான் My Guru, இலங்கையின் முதல் AI ஆசிரியர். 🎓\n${chosenSubject} பற்றிய உங்கள் கேள்விகளை என்னிடம் கேளுங்கள்.\n\n(நீங்கள் ஒரு புகைப்படம் அல்லது குரல் குறிப்பையும் அனுப்பலாம் 📸🎤)\n\n_மெனுவை மாற்ற எந்த நேரத்திலும் #menu என அனுப்பவும்._`;
+                            welcomeMsg = `🎉 ${chosenSubject} தேர்ந்தெடுக்கப்பட்டது!\n\nவணக்கம்! 👋\n${chosenSubject} பற்றிய உங்கள் கேள்விகளை என்னிடம் கேளுங்கள்.\n\n(நீங்கள் ஒரு புகைப்படம் அல்லது குரல் குறிப்பையும் அனுப்பலாம் 📸🎤)${tipMsg}\n\n_மெனுவை மாற்ற எந்த நேரத்திலும் #menu என அனுப்பவும்._`;
                         }
 
                         await sendWhatsAppMessage(phone_number, welcomeMsg);
@@ -241,13 +238,13 @@ router.post('/webhook', async (req, res) => {
                     return;
                 }
 
-                // STATE 3: CHATTING (Talking to Gemini)
                 if (session.state === 'CHATTING') {
                     
                     let payload = { 
                         question: msg_type === 'text' ? msg_text : "Please analyze this media", 
                         subject: session.subject, 
-                        medium: session.medium 
+                        medium: session.medium,
+                        session_id: phone_number // 🔥 For Memory Isolation
                     };
 
                     if (msg_type === 'image') {
@@ -280,7 +277,7 @@ router.post('/webhook', async (req, res) => {
                                 })
                                 .eq('user_id', activePlan.user_id);
                                 
-                            // 2. Safely Update profiles table for Web UI!
+                            // 2. Update profiles table
                             if (userProfile) {
                                 await supabase.from('profiles')
                                     .update({ credits_used: (userProfile.credits_used || 0) + 1 })

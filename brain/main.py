@@ -297,7 +297,7 @@ def chat_endpoint(request: ChatRequest):
                         ctx.append(item)
                         seen.add(item['content'])
                         
-                if len(ctx) >= 30: break 
+                if len(ctx) >= 15: break 
             except Exception as db_err:
                 print(f"⚠️ DB Error: {db_err}")
                 continue 

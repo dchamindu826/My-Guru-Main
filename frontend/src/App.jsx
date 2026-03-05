@@ -33,6 +33,7 @@ import ManageFeedbacks from './pages/admin/ManageFeedbacks';
 import IngestDocs from './pages/admin/IngestDocs';
 import ManageAdmins from './pages/admin/ManageAdmins';
 import KnowledgeBase from './pages/admin/KnowledgeBase';
+import InstituteStudents from './components/admin/InstituteStudents'; // 🔥 අලුත් Institute Component එක Import කළා
 
 const PublicLayout = ({ children }) => (
   <div className="flex flex-col min-h-screen bg-[#050505]">
@@ -74,6 +75,7 @@ export default function App() {
              <Route path="dashboard" element={<AdminDashboard />} />
              <Route path="plans" element={<AdminPlans />} />
              <Route path="payments" element={<AdminPayments />} />
+             <Route path="institute" element={<InstituteStudents />} /> {/* 🔥 අලුත් Route එක දැම්මා */}
              <Route path="users" element={<AdminUsers />} />
              <Route path="student-feedback" element={<StudentFeedbacks />} />
              <Route path="testimonials" element={<ManageFeedbacks />} />

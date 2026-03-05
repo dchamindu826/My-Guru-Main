@@ -3,9 +3,30 @@ import Spline from '@splinetool/react-spline';
 import { motion } from 'framer-motion';
 import { MessageCircle, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext'; // 🔥 AuthContext එක Import කළා
 
 export default function Hero() {
   const navigate = useNavigate();
+  const { user, signInWithGoogle } = useAuth(); // 🔥 User සහ Login function එක ගත්තා
+
+  // 🔥 අලුත් Function එක Button Click එක Handle කරන්න
+  const handleAskGuruClick = async (e) => {
+    e.preventDefault(); 
+
+    if (user) {
+        // ලොග් වෙලා නම් කෙලින්ම Chat එකට යනවා
+        navigate('/chat');
+    } else {
+        // ලොග් වෙලා නැත්නම් Google Login එක එනවා
+        try {
+            await signInWithGoogle();
+            // Login වුණ ගමන් Chat එකට යනවා
+            navigate('/chat');
+        } catch (error) {
+            console.error("Login failed:", error);
+        }
+    }
+  };
 
   return (
     // min-h-[85vh] දැම්මාම Full Screen එකට වඩා ටිකක් අඩුවෙන් උස හැදෙනවා. 
@@ -59,14 +80,14 @@ export default function Hero() {
             </p>
             <p className="text-gray-300 font-medium">
                6 ශ්‍රේණියේ සිට උසස් අධ්‍යාපනය දක්වා ඕනෑම විෂයක් සරලව පියවරෙන් පියවර SMART විදිහට ඉගෙන ගන්න..
-                ඔබගේ පෞද්ගලික ගුරුවරයා වෙත පිවිසෙන්න.
+               ඔබගේ පෞද්ගලික ගුරුවරයා වෙත පිවිසෙන්න.
             </p>
           </div>
 
           {/* CTA Button */}
           <div className="pt-4">
             <button 
-              onClick={() => navigate('/chat')}
+              onClick={handleAskGuruClick} // 🔥 මෙතන අලුත් Function එක දුන්නා
               className="group relative inline-flex items-center justify-center gap-3 bg-white text-black px-8 py-4 rounded-2xl font-bold text-lg hover:scale-105 transition-all duration-300 shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:shadow-[0_0_40px_rgba(255,191,0,0.5)]"
             >
               <span>Ask from Guru</span>

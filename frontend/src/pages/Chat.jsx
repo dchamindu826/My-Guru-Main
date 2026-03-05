@@ -31,13 +31,20 @@ const SUBJECT_THEMES = {
 export default function Chat() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // 🔥 Route Protection: User ලොග් වෙලා නැත්නම් මුල් පිටුවට හරවනවා
+  useEffect(() => {
+    if (!user) {
+        navigate('/');
+    }
+  }, [user, navigate]);
   
   // --- STATE ---
   const [input, setInput] = useState(""); 
   const [userPlan, setUserPlan] = useState('free'); 
   const [isUnlimited, setIsUnlimited] = useState(false);
   const [maxCredits, setMaxCredits] = useState(3);
-  const [creditsLeft, setCreditsLeft] = useState(3); // වෙනස් කළා
+  const [creditsLeft, setCreditsLeft] = useState(3); 
   const [isSidebarOpen, setSidebarOpen] = useState(true); 
   const [isTyping, setIsTyping] = useState(false);
   
@@ -67,13 +74,14 @@ export default function Chat() {
       { icon: <Sparkles size={14} className="text-purple-400"/>, text: "විභාගයට ගැලපෙන පිළිතුරක් නිර්මාණය කරමින්..." }
   ];
 
-  // Show Popup on Load
+  // Show Popup on Load (Only for logged-in users)
   useEffect(() => {
+      if (!user) return;
       const hasSeenPopup = sessionStorage.getItem('myguru_wa_popup_seen');
       if (!hasSeenPopup) {
           setTimeout(() => setShowWAPopup(true), 1500); // තත්පර 1.5 කින් එන්න
       }
-  }, []);
+  }, [user]);
 
   const closeWAPopup = () => {
       setShowWAPopup(false);
@@ -149,6 +157,7 @@ export default function Chat() {
 
   // Refresh credits every 10 seconds just in case they used WhatsApp while having the site open
   useEffect(() => {
+      if (!user) return;
       const interval = setInterval(fetchUserCredits, 10000);
       return () => clearInterval(interval);
   }, [user]);
@@ -282,6 +291,18 @@ export default function Chat() {
           [subject]: [...(prev[subject] || []), msg] 
       }));
   };
+
+  // 🔥 Loading screen for when user is null, before redirecting
+  if (!user) {
+    return (
+        <div className="flex h-screen bg-[#050505] items-center justify-center text-white">
+            <div className="animate-pulse flex flex-col items-center">
+                <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p className="text-gray-400 font-bold text-sm">Loading My Guru...</p>
+            </div>
+        </div>
+    );
+  }
 
   return (
     <div className="flex h-screen font-sans bg-[#050505] text-white overflow-hidden selection:bg-amber-500/30">

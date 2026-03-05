@@ -1,6 +1,5 @@
 import React from 'react';
-// IMPORT FIXED: Shield, Database added. Users removed.
-import { LayoutDashboard, CreditCard, MessageSquare, LogOut, Star, FileText, Shield, Database } from 'lucide-react';
+import { LayoutDashboard, CreditCard, MessageSquare, LogOut, Star, FileText, Shield, Database, Users } from 'lucide-react'; // 🔥 Users icon එක import කළා
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext'; 
 
@@ -16,12 +15,9 @@ export default function Sidebar() {
   const navItems = [
     { name: 'Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard size={20} /> },
     { name: 'Payments', path: '/admin/payments', icon: <CreditCard size={20} /> },
-    
-    // Students removed as requested
-    // { name: 'Students', path: '/admin/users', icon: <Users size={20} /> }, 
-
-    { name: 'Admins', path: '/admin/admins', icon: <Shield size={20} /> }, // Now works
-    { name: 'Knowledge Base', path: '/admin/knowledge', icon: <Database size={20} /> }, // Now works
+    { name: 'Institute', path: '/admin/institute', icon: <Users size={20} /> }, // 🔥 අලුත් Institute Link එක දැම්මා
+    { name: 'Admins', path: '/admin/admins', icon: <Shield size={20} /> }, 
+    { name: 'Knowledge Base', path: '/admin/knowledge', icon: <Database size={20} /> }, 
     { name: 'Student Feedback', path: '/admin/student-feedback', icon: <MessageSquare size={20} /> },
     { name: 'Site Testimonials', path: '/admin/testimonials', icon: <Star size={20} /> },
     { name: 'RAG Ingestion', path: '/admin/ingest', icon: <FileText size={20} /> },
@@ -37,7 +33,7 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="space-y-2 flex-1">
+      <nav className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar">
         {navItems.map((item) => (
           <NavLink
             key={item.path}

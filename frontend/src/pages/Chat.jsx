@@ -7,7 +7,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api'; 
+import { supabase } from '../lib/supabase'; // Database එකෙන් Credits ගන්න ඕන නිසා මේක දැම්මා
 import logo from '../assets/logo.png'; 
+import { FaWhatsapp } from 'react-icons/fa'; // WhatsApp අයිකන් එකට
 
 const SUBJECT_THEMES = {
   "Science": "from-blue-600 to-cyan-500",
@@ -35,13 +37,15 @@ export default function Chat() {
   const [userPlan, setUserPlan] = useState('free'); 
   const [isUnlimited, setIsUnlimited] = useState(false);
   const [maxCredits, setMaxCredits] = useState(3);
-  const [credits, setCredits] = useState(3);
+  const [creditsLeft, setCreditsLeft] = useState(3); // වෙනස් කළා
   const [isSidebarOpen, setSidebarOpen] = useState(true); 
   const [isTyping, setIsTyping] = useState(false);
   
   const [activeStream, setActiveStream] = useState('OL'); 
   const [activeSubject, setActiveSubject] = useState(null); 
   const [medium, setMedium] = useState("Sinhala");
+
+  const [showWAPopup, setShowWAPopup] = useState(false); // Popup State
 
   const [sessions, setSessions] = useState(() => {
       const saved = localStorage.getItem(`myguru_sessions_${user?.uid || 'guest'}`);
@@ -63,6 +67,19 @@ export default function Chat() {
       { icon: <Sparkles size={14} className="text-purple-400"/>, text: "විභාගයට ගැලපෙන පිළිතුරක් නිර්මාණය කරමින්..." }
   ];
 
+  // Show Popup on Load
+  useEffect(() => {
+      const hasSeenPopup = sessionStorage.getItem('myguru_wa_popup_seen');
+      if (!hasSeenPopup) {
+          setTimeout(() => setShowWAPopup(true), 1500); // තත්පර 1.5 කින් එන්න
+      }
+  }, []);
+
+  const closeWAPopup = () => {
+      setShowWAPopup(false);
+      sessionStorage.setItem('myguru_wa_popup_seen', 'true');
+  };
+
   useEffect(() => {
       let interval;
       if (isTyping) {
@@ -81,48 +98,61 @@ export default function Chat() {
   const currentMessages = activeSubject ? (sessions[activeSubject] || []) : [];
   const activeTheme = activeSubject ? SUBJECT_THEMES[activeSubject] : "from-gray-700 to-gray-600";
 
+  // 🔥 Database එකෙන් Credits ගන්න එක (Syncs with WhatsApp)
+  const fetchUserCredits = async () => {
+      if (!user) return;
+      try {
+          const userId = user.uid || user.id;
+          
+          // 1. Check Plan from Payments table
+          const res = await api.get(`/payments/user/${userId}`);
+          const approvedOrder = res.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).find(o => o.status === 'approved');
+
+          // 2. Fetch Usage from profiles table (This is where Backend updates!)
+          const { data: profileData } = await supabase.from('profiles').select('credits_used, last_reset_date').eq('id', userId).single();
+          
+          let usedDB = profileData?.credits_used || 0;
+          let lastReset = profileData?.last_reset_date;
+          let todayStr = new Date().toISOString().split('T')[0];
+
+          // Daily reset logic on Frontend too just in case
+          if (lastReset !== todayStr) {
+             usedDB = 0;
+          }
+
+          if (approvedOrder) {
+              const pkgName = approvedOrder.package_name.toLowerCase();
+              if (pkgName.includes('genius')) { 
+                  setUserPlan('genius'); 
+                  setIsUnlimited(true); 
+                  setCreditsLeft("Unlimited"); 
+              }
+              else if (pkgName.includes('scholar')) { 
+                  setUserPlan('scholar'); 
+                  setIsUnlimited(false); 
+                  const totalAllowed = 100; 
+                  setMaxCredits(totalAllowed);
+                  setCreditsLeft(Math.max(0, totalAllowed - usedDB)); 
+              }
+          } else { 
+              setUserPlan('free'); 
+              setIsUnlimited(false); 
+              setMaxCredits(3);
+              setCreditsLeft(Math.max(0, 3 - usedDB)); 
+          }
+      } catch (error) { console.error("Credit Fetch Error:", error); }
+  };
+
   useEffect(() => {
-    if (!user) return;
-    const fetchUserPlan = async () => {
-        try {
-            const userId = user.uid || user.id;
-            
-            const res = await api.get(`/payments/user/${userId}`);
-            const approvedOrder = res.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).find(o => o.status === 'approved');
-
-            const today = new Date().toDateString();
-            const storedUsageStr = localStorage.getItem(`myguru_usage_${userId}`);
-            let usageData = storedUsageStr ? JSON.parse(storedUsageStr) : { date: today, used: 0, total_used: 0 };
-            
-            if (usageData.date !== today) {
-                usageData = { date: today, used: 0, total_used: usageData.total_used };
-                localStorage.setItem(`myguru_usage_${userId}`, JSON.stringify(usageData));
-            }
-
-            if (approvedOrder) {
-                const pkgName = approvedOrder.package_name.toLowerCase();
-                if (pkgName.includes('genius')) { 
-                    setUserPlan('genius'); 
-                    setIsUnlimited(true); 
-                    setCredits("Unlimited"); 
-                }
-                else if (pkgName.includes('scholar')) { 
-                    setUserPlan('scholar'); 
-                    setIsUnlimited(false); 
-                    const totalAllowed = 100; 
-                    setMaxCredits(totalAllowed);
-                    setCredits(totalAllowed - usageData.total_used); 
-                }
-            } else { 
-                setUserPlan('free'); 
-                setIsUnlimited(false); 
-                setMaxCredits(3);
-                setCredits(Math.max(0, 3 - usageData.used)); 
-            }
-        } catch (error) { console.error("Plan Error:", error); }
-    };
-    fetchUserPlan();
+      fetchUserCredits();
   }, [user]);
+
+  // Refresh credits every 10 seconds just in case they used WhatsApp while having the site open
+  useEffect(() => {
+      const interval = setInterval(fetchUserCredits, 10000);
+      return () => clearInterval(interval);
+  }, [user]);
+
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -173,29 +203,11 @@ export default function Chat() {
     reader.onerror = error => reject(error);
   });
 
-  const updateUsage = () => {
-      if (isUnlimited) return;
-      const userId = user?.uid || user?.id;
-      const storedUsageStr = localStorage.getItem(`myguru_usage_${userId}`);
-      let usageData = storedUsageStr ? JSON.parse(storedUsageStr) : { date: new Date().toDateString(), used: 0, total_used: 0 };
-      
-      usageData.used += 1; 
-      usageData.total_used += 1; 
-      
-      localStorage.setItem(`myguru_usage_${userId}`, JSON.stringify(usageData));
-      
-      if (userPlan === 'free') {
-          setCredits(Math.max(0, 3 - usageData.used));
-      } else {
-          setCredits(Math.max(0, maxCredits - usageData.total_used));
-      }
-  };
-
   const handleSend = async (e) => {
     e.preventDefault();
     if ((!input.trim() && !selectedImage) || !activeSubject) return;
 
-    if (!isUnlimited && credits <= 0) {
+    if (!isUnlimited && creditsLeft <= 0) {
         addMessageToSession(activeSubject, { 
             id: Date.now(), 
             role: 'ai', 
@@ -228,13 +240,19 @@ export default function Chat() {
     clearImage();
     setIsTyping(true);
 
+    // 🔥 Update DB usage immediately for instant UI feedback
+    const userId = user?.uid || user?.id;
+    if (!isUnlimited && userId) {
+        setCreditsLeft(prev => prev - 1);
+        supabase.rpc('increment_credits', { userid: userId }).catch(console.error);
+    }
+
     try {
-        let payload = { question: userMsg.content, subject: activeSubject, medium: medium }; 
+        let payload = { question: userMsg.content, subject: activeSubject, medium: medium, session_id: userId }; 
         if (base64String) {
             payload.image_data = base64String;
         }
 
-        // 🔥 URL එක හරියටම myguru.lumi-automation.com කියලා හැදුවා (api. කෑල්ල අයින් කරා)
         const res = await fetch("https://myguru.lumi-automation.com/brain/chat", { 
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -248,15 +266,13 @@ export default function Chat() {
             id: Date.now() + 1, 
             role: 'ai', 
             content: data.answer, 
-            // 🔥 Bot ගෙන් එන image එක save කරගන්නේ නෑ
             image: null, 
             timestamp: new Date() 
         });
 
-        updateUsage();
-
     } catch (e) {
         addMessageToSession(activeSubject, { id: Date.now(), role: 'ai', content: "⚠️ System busy. පොඩ්ඩක් ඉඳලා ආයේ ට්‍රයි කරන්න." });
+        // Optional: Revert credit if failed
     } finally { setIsTyping(false); }
   };
 
@@ -270,6 +286,41 @@ export default function Chat() {
   return (
     <div className="flex h-screen font-sans bg-[#050505] text-white overflow-hidden selection:bg-amber-500/30">
       
+      {/* --- WHATSAPP POPUP MODAL --- */}
+      <AnimatePresence>
+        {showWAPopup && (
+            <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+            >
+                <motion.div 
+                    initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+                    className="bg-[#111] border border-[#25D366]/30 shadow-2xl shadow-[#25D366]/20 rounded-3xl p-6 md:p-8 max-w-sm w-full text-center relative overflow-hidden"
+                >
+                    <div className="absolute top-0 right-0 p-4"><button onClick={closeWAPopup} className="text-gray-400 hover:text-white"><X size={20}/></button></div>
+                    
+                    <div className="w-20 h-20 bg-gradient-to-br from-[#25D366] to-[#128C7E] rounded-full mx-auto flex items-center justify-center mb-6 shadow-xl shadow-[#25D366]/30">
+                        <FaWhatsapp className="text-white text-4xl"/>
+                    </div>
+                    
+                    <h2 className="text-2xl font-black text-white mb-2 tracking-tight">දැන් WhatsApp එකෙනුත්!</h2>
+                    <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+                        My Guru දැන් ඔයාගේ WhatsApp එකෙත් ඉන්නවා. Web එකට එන්නෙ නැතුව කෙලින්ම WhatsApp එකෙන් ප්‍රශ්න අහන්න.
+                    </p>
+
+                    <a 
+                        href="https://wa.me/94713747070" 
+                        target="_blank" rel="noopener noreferrer"
+                        className="w-full py-3.5 bg-[#25D366] hover:bg-[#1DA851] text-black font-bold rounded-xl transition-all flex items-center justify-center gap-2 transform hover:scale-[1.02]"
+                        onClick={closeWAPopup}
+                    >
+                        <FaWhatsapp className="text-xl"/> Open WhatsApp
+                    </a>
+                </motion.div>
+            </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* --- SIDEBAR --- */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#090909] border-r border-white/5 flex flex-col transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="p-6 flex items-center justify-between">
@@ -328,8 +379,8 @@ export default function Chat() {
                 <div className="mb-3 bg-gradient-to-r from-amber-500/20 to-yellow-600/20 rounded-xl p-3 border border-amber-500/30 flex items-center gap-2 justify-center text-amber-500 font-black text-xs tracking-wide"><Infinity size={16} /> <span>UNLIMITED ACCESS</span></div>
             ) : (
                 <div className="mb-3 bg-[#111] rounded-xl p-3 border border-white/5 cursor-pointer hover:border-white/10 transition" onClick={() => navigate('/plans')}>
-                    <div className="flex justify-between text-xs mb-2 text-gray-400 font-medium"><span>{userPlan === 'free' ? 'Daily Free Limit' : 'Package Limit'}</span><span className={`font-bold ${credits === 0 ? 'text-red-500' : 'text-white'}`}>{credits}/{maxCredits} Left</span></div>
-                    <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min((credits/maxCredits)*100, 100)}%` }} className={`h-full ${credits === 0 ? 'bg-red-500' : 'bg-amber-500'}`}/></div>
+                    <div className="flex justify-between text-xs mb-2 text-gray-400 font-medium"><span>{userPlan === 'free' ? 'Daily Free Limit' : 'Package Limit'}</span><span className={`font-bold ${creditsLeft === 0 ? 'text-red-500' : 'text-white'}`}>{creditsLeft}/{maxCredits} Left</span></div>
+                    <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min((creditsLeft/maxCredits)*100, 100)}%` }} className={`h-full ${creditsLeft === 0 ? 'bg-red-500' : 'bg-amber-500'}`}/></div>
                     <p className="text-[10px] text-amber-500 mt-2.5 text-center font-bold flex items-center justify-center gap-1">Upgrade To Premium <Zap size={10} /></p>
                 </div>
             )}
@@ -407,7 +458,7 @@ export default function Chat() {
             </div>
         ) : (
             <>
-                <div className="flex-1 overflow-y-auto px-4 pt-24 pb-48 md:px-32 lg:px-48 space-y-6 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto px-4 pt-24 pb-48 md:px-32 lg:px-48 space-y-6 custom-scrollbar font-sans">
                     {currentMessages.map((msg) => (
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                             
@@ -415,25 +466,23 @@ export default function Chat() {
                                 {msg.role === 'ai' ? <div className={`w-full h-full rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center`}><Bot size={16} /></div> : user?.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full" /> : <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">{(user?.email || "U").charAt(0).toUpperCase()}</div>}
                             </div>
 
-                            <div className={`my-guru-font max-w-[90%] px-4 py-3 md:px-5 md:py-4 rounded-2xl text-[15px] shadow-sm flex flex-col gap-2 ${msg.role === 'user' ? 'bg-[#212121] text-white rounded-tr-sm' : 'bg-[#111] border border-white/5 text-gray-200 rounded-tl-sm'}`}>
+                            <div className={`max-w-[90%] px-4 py-3 md:px-5 md:py-4 rounded-2xl text-[16px] leading-tight shadow-sm flex flex-col gap-2 ${msg.role === 'user' ? 'bg-[#212121] text-white rounded-tr-sm' : 'bg-[#111] border border-white/5 text-gray-200 rounded-tl-sm'}`}>
                                 
-                                {/* 🔥 IMAGE RENDER: ඔයා යවන පින්තූරේ විතරයි පෙන්නන්නේ */}
                                 {msg.image && msg.role === 'user' && (
                                     <div className="relative group">
                                         <img src={msg.image} alt="Attached" className="max-w-xs md:max-w-sm rounded-xl border border-white/10 shadow-lg mb-2" />
                                     </div>
                                 )}
                                 
-                                {/* TEXT CONTENT: ලයින් ස්පේස් අඩු කරලා (leading-snug) */}
                                 {msg.content && (
-                                    <span className="whitespace-pre-wrap leading-[1.3]">{msg.content}</span>
+                                    <span className="whitespace-pre-wrap">{msg.content}</span>
                                 )}
 
                             </div>
                         </motion.div>
                     ))}
                     {isTyping && (
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4 font-sans">
                             <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${activeTheme} flex items-center justify-center shadow-lg`}>
                                 <Bot size={16} className="text-white animate-pulse"/>
                             </div>
@@ -441,7 +490,7 @@ export default function Chat() {
                                 <div className="animate-spin-slow">
                                     {loadingTexts[loadingStep].icon}
                                 </div>
-                                <span className="text-[13px] text-gray-400 font-medium animate-pulse tracking-wide">
+                                <span className="text-[14px] text-gray-400 font-medium animate-pulse tracking-wide">
                                     {loadingTexts[loadingStep].text}
                                 </span>
                             </div>
@@ -460,14 +509,14 @@ export default function Chat() {
                             </div>
                         )}
                         
-                        <div className={`relative flex items-end gap-2 p-1.5 bg-[#111] border rounded-[24px] shadow-2xl transition-all ${(!isUnlimited && credits <= 0) ? 'border-red-500/50 bg-red-900/10 opacity-80' : 'border-white/10 focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)]'}`}>
+                        <div className={`relative flex items-end gap-2 p-1.5 bg-[#111] border rounded-[24px] shadow-2xl transition-all ${(!isUnlimited && creditsLeft <= 0) ? 'border-red-500/50 bg-red-900/10 opacity-80' : 'border-white/10 focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)]'}`}>
                             
                             <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
                             
                             <button 
                                 onClick={() => fileInputRef.current?.click()} 
-                                disabled={(!isUnlimited && credits <= 0) || isTyping}
-                                className={`p-3 mb-0.5 rounded-full transition ${(!isUnlimited && credits <= 0) ? 'text-red-500/50 cursor-not-allowed' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                                disabled={(!isUnlimited && creditsLeft <= 0) || isTyping}
+                                className={`p-3 mb-0.5 rounded-full transition ${(!isUnlimited && creditsLeft <= 0) ? 'text-red-500/50 cursor-not-allowed' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                             >
                                 <ImageIcon size={20} />
                             </button>
@@ -477,19 +526,19 @@ export default function Chat() {
                                 value={input} 
                                 onChange={(e) => setInput(e.target.value)} 
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }} 
-                                placeholder={(!isUnlimited && credits <= 0) ? "Your Daily Limit Reached. Upgrade Plan." : `Ask anything in ${medium}...`} 
-                                disabled={(!isUnlimited && credits <= 0) || isTyping}
-                                className="w-full bg-transparent resize-none focus:outline-none py-3.5 px-2 text-[15px] text-white placeholder-gray-600 max-h-32 custom-scrollbar disabled:cursor-not-allowed" 
+                                placeholder={(!isUnlimited && creditsLeft <= 0) ? "Your Daily Limit Reached. Upgrade Plan." : `Ask anything in ${medium}...`} 
+                                disabled={(!isUnlimited && creditsLeft <= 0) || isTyping}
+                                className="w-full bg-transparent resize-none focus:outline-none py-3.5 px-2 text-[16px] font-sans text-white placeholder-gray-600 max-h-32 custom-scrollbar disabled:cursor-not-allowed" 
                                 rows={1} 
                                 style={{ minHeight: '50px' }} 
                             />
                             
                             <button 
                                 onClick={handleSend} 
-                                disabled={(!input.trim() && !selectedImage) || isTyping || (!isUnlimited && credits <= 0)} 
-                                className={`p-3 mb-0.5 rounded-full transition shadow-lg ${(!isUnlimited && credits <= 0) ? 'bg-red-500/20 text-red-500 cursor-not-allowed' : (input.trim() || selectedImage) ? `bg-gradient-to-r ${activeTheme} text-white hover:scale-105` : 'bg-white/5 text-gray-600 cursor-not-allowed'}`}
+                                disabled={(!input.trim() && !selectedImage) || isTyping || (!isUnlimited && creditsLeft <= 0)} 
+                                className={`p-3 mb-0.5 rounded-full transition shadow-lg ${(!isUnlimited && creditsLeft <= 0) ? 'bg-red-500/20 text-red-500 cursor-not-allowed' : (input.trim() || selectedImage) ? `bg-gradient-to-r ${activeTheme} text-white hover:scale-105` : 'bg-white/5 text-gray-600 cursor-not-allowed'}`}
                             >
-                                {(!isUnlimited && credits <= 0) ? <Lock size={18} /> : <Send size={18} fill={input.trim() ? "currentColor" : "none"} />}
+                                {(!isUnlimited && creditsLeft <= 0) ? <Lock size={18} /> : <Send size={18} fill={input.trim() ? "currentColor" : "none"} />}
                             </button>
                         </div>
                     </div>

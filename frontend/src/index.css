@@ -1,6 +1,6 @@
 /* src/index.css */
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Gemunu+Libre:wght@400;500;600;700&display=swap');
+
 
 body {
   background-color: #050505;
@@ -10,12 +10,4 @@ body {
 ::-webkit-scrollbar {
   width: 0px;
   background: transparent;
-}
-
-
-.my-guru-font {
-    font-family: 'Gemunu Libre', sans-serif !important;
-    font-size: 19px;
-    letter-spacing: 0.5px;
-    line-height: 1.2 !important; 
 }

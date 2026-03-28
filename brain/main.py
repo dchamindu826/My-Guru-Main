@@ -45,19 +45,32 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # --- IN-MEMORY CHAT HISTORY ---
 USER_MEMORY = {}
 
+# --- GLOBAL KEY INDEX FOR ROUND-ROBIN ---
+CURRENT_KEY_INDEX = 0
+
 # --- HELPER FUNCTIONS ---
 def get_random_client():
-    return genai.Client(api_key=random.choice(API_KEYS))
+    global CURRENT_KEY_INDEX
+    if not API_KEYS:
+        return None
+    # පිළිවෙලට ඊළඟ API Key එක තෝරා ගැනීම (Round-Robin)
+    client = genai.Client(api_key=API_KEYS[CURRENT_KEY_INDEX])
+    CURRENT_KEY_INDEX = (CURRENT_KEY_INDEX + 1) % len(API_KEYS)
+    return client
 
 def safe_google_api_call(contents, is_json=False):
+    global CURRENT_KEY_INDEX
     if not API_KEYS:
         return None, "No API Keys found"
         
-    start_index = random.randint(0, len(API_KEYS) - 1)
     last_err = ""
     
-    for i in range(len(API_KEYS)):
-        current_key = API_KEYS[(start_index + i) % len(API_KEYS)]
+    # අපි ගාව තියෙන Keys ගාණටම Try කරනවා
+    for _ in range(len(API_KEYS)):
+        current_key = API_KEYS[CURRENT_KEY_INDEX]
+        # ඊළඟ වතාවේදී ඊළඟ Key එක ගන්න Index එක Update කරනවා
+        CURRENT_KEY_INDEX = (CURRENT_KEY_INDEX + 1) % len(API_KEYS)
+        
         try:
             client = genai.Client(api_key=current_key)
             
@@ -69,7 +82,7 @@ def safe_google_api_call(contents, is_json=False):
                     types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
                     types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
                 ],
-                temperature=0.2 # Balanced for accuracy and good explanations
+                temperature=0.2 
             )
             
             response = client.models.generate_content(
@@ -104,14 +117,20 @@ def safe_google_api_call(contents, is_json=False):
             
         except Exception as e:
             err_str = str(e).lower()
-            last_err = err_str
-            if "429" in err_str or "503" in err_str or "quota" in err_str or "exhausted" in err_str: 
-                time.sleep(0.5)
-                continue
-            print(f"❌ Core API Error: {err_str}")
-            return None, err_str
+            last_err = str(e)
             
-    return None, f"All keys failed. Last error: {last_err}"
+            # Quota එක පැනලා හෝ 429 Error එකක් ආවොත්, කෙලින්ම ඊළඟ Key එකට මාරු වෙනවා ළමයට Error එක නොපෙන්වා!
+            if "429" in err_str or "503" in err_str or "quota" in err_str or "exhausted" in err_str or "too many requests" in err_str: 
+                print(f"⚠️ API Limit hit on a key. Seamlessly switching to the next key...")
+                time.sleep(1) # තත්පරයක් ඉඳලා ඊළඟ Key එක Try කරනවා
+                continue
+            
+            # වෙනත් Error එකක් නම් (උදා: Prompt අවුලක්) එතනින් නවත්වනවා
+            print(f"❌ Core API Error: {last_err}")
+            return None, last_err
+            
+    # Keys 10ම Limit වෙලා නම් විතරක් මේක එනවා (එහෙම වෙන්න සම්භාවිතාව ගොඩක් අඩුයි)
+    return None, f"All {len(API_KEYS)} API Keys failed. Last error: {last_err}"
 
 class ChatRequest(BaseModel):
     question: str
@@ -149,14 +168,19 @@ def generate_smart_answer(context, question, subject, medium, history_text="", i
 
     lang_instruction = "You MUST reply entirely in Sinhala." if medium.lower() == "sinhala" else "You MUST reply entirely in English."
 
-    # 🔥 MASSIVELY UPDATED PROMPT
+    # 🔥 MASSIVELY UPDATED PROMPT (Strict Subject Focus added)
     prompt = f"""
     You are an elite and highly professional examiner and expert teacher in Sri Lanka.
     Your task is to provide 100% accurate, highly structured, and deeply explanatory answers. NO HALLUCINATIONS. Make the answer engaging and never boring.
 
+    🔴 CRITICAL CONTEXT RULE 🔴
     CURRENT SUBJECT: {subject}
     TARGET MEDIUM: {medium}
     
+    You MUST answer the student's question STRICTLY and EXCLUSIVELY in the context of the CURRENT SUBJECT ({subject}). 
+    Even if the student's question sounds general, you must interpret it and answer it ONLY as it applies to {subject}. 
+    For example, if the subject is "Tamil" and the student asks "What is an Adapilla?", you MUST explain what an Adapilla is IN THE TAMIL LANGUAGE, NOT in Sinhala.
+
     {lang_instruction}
 
     {history_text}
@@ -180,12 +204,12 @@ def generate_smart_answer(context, question, subject, medium, history_text="", i
     2. **STRICT KNOWLEDGE HIERARCHY (FOLLOW THIS ORDER):**
        * STEP 1: Always check [PRIORITY 1: MARKING SCHEMES & PAST PAPERS] first. Base your answer heavily on this to ensure exam accuracy.
        * STEP 2: Check [PRIORITY 2: TEXTBOOKS] next for elaboration.
-       * STEP 3: If not in the provided Context, use your vast internal factual knowledge to provide a superb, 100% accurate answer. ALWAYS answer. NEVER say "I don't know" or "Not in textbook".
+       * STEP 3: If not in the provided Context, use your vast internal factual knowledge to provide a superb, 100% accurate answer EXCLUSIVELY relevant to {subject}. NEVER say "I don't know" or "Not in textbook".
 
     3. **HOW TO ANSWER DIFFERENT QUESTION TYPES:**
        * **For MCQs:** DO NOT just give the letter. First, state the Correct Answer clearly. Then, explain in detail WHY it is the correct answer. Finally, explain WHY the other options are wrong.
        * **For Large/Multi-part Questions (e.g., a, b, c or i, ii):** You MUST answer EVERY SINGLE sub-question. Do not skip any. Explain each sub-question beautifully with details.
-       * **For General/Theoretical Questions:** Explain thoroughly. Break the answer down into clear 'Key Points'. Always provide a practical, real-world Example (උදාහරණයක්) to help the student understand perfectly. Make it interesting!
+       * **For General/Theoretical Questions:** Explain thoroughly. Break the answer down into clear 'Key Points'. Always provide a practical, real-world Example (උදාහරණයක්) relevant to {subject} to help the student understand perfectly. Make it interesting!
        * **For Math/Science:** Solve step-by-step with 100% accuracy. Do not hallucinate geometric points.
 
     4. **FORMATTING & ASTERISKS RULE (CRITICAL):**
@@ -193,6 +217,8 @@ def generate_smart_answer(context, question, subject, medium, history_text="", i
        * Use a few relevant emojis (📝, ✅, 📌, 💡, 🎯) to make the text beautiful and engaging.
        * Keep paragraphs clear and well-spaced. 
     """
+    
+    # ... (Rest of your code remains the same)
     
     contents = [prompt]
     if img: 

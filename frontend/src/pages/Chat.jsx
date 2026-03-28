@@ -107,23 +107,42 @@ export default function Chat() {
   const activeTheme = activeSubject ? SUBJECT_THEMES[activeSubject] : "from-gray-700 to-gray-600";
 
   // 🔥 Database එකෙන් Credits ගන්න එක (Syncs with WhatsApp)
+  // 🔥 Database එකෙන් Credits ගන්න එක සහ Session Security Check එක
   const fetchUserCredits = async () => {
       if (!user) return;
       try {
           const userId = user.uid || user.id;
           
-          // 1. Check Plan from Payments table
-          const res = await api.get(`/payments/user/${userId}`);
-          const approvedOrder = res.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).find(o => o.status === 'approved');
+          // 1. Session Security Check
+          const localToken = localStorage.getItem(`myguru_session_token_${userId}`);
+          
+          // 2. Fetch data from DB
+          const { data: profileData, error: profileError } = await supabase
+              .from('profiles')
+              .select('credits_used, last_reset_date, current_session_token')
+              .eq('id', userId)
+              .maybeSingle();
+          
+          if (profileError) throw profileError;
 
-          // 2. Fetch Usage from profiles table (This is where Backend updates!)
-          const { data: profileData } = await supabase.from('profiles').select('credits_used, last_reset_date').eq('id', userId).single();
+          // 🛑 3. Multi-Device Detection Logic
+          if (profileData && profileData.current_session_token) {
+              if (localToken !== profileData.current_session_token) {
+                  alert("You can use one account from one device only");
+                  await logout();
+                  navigate('/');
+                  return; // Stop execution
+              }
+          }
+
+          // 4. Update Credits Logic (පරණ කේතයමයි)
+          const res = await api.get(`/payments/user/${userId}?email=${user.email}`);
+          const approvedOrder = res.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).find(o => o.status === 'approved');
           
           let usedDB = profileData?.credits_used || 0;
           let lastReset = profileData?.last_reset_date;
           let todayStr = new Date().toISOString().split('T')[0];
 
-          // Daily reset logic on Frontend too just in case
           if (lastReset !== todayStr) {
              usedDB = 0;
           }
@@ -148,7 +167,7 @@ export default function Chat() {
               setMaxCredits(3);
               setCreditsLeft(Math.max(0, 3 - usedDB)); 
           }
-      } catch (error) { console.error("Credit Fetch Error:", error); }
+      } catch (error) { console.error("Credit/Session Fetch Error:", error); }
   };
 
   useEffect(() => {
@@ -221,8 +240,8 @@ export default function Chat() {
             id: Date.now(), 
             role: 'ai', 
             content: userPlan === 'free' 
-                ? "🛑 අද දවසේ ඔයාට අහන්න පුළුවන් ප්‍රශ්න ප්‍රමාණය (3/3) ඉවරයි පුතේ. තව ප්‍රශ්න අහන්න අපේ Unlimited Plan එකකට Upgrade කරන්න. 👇\n\n[Upgrade Now](/plans)"
-                : "🛑 ඔයාගේ පැකේජයේ ප්‍රශ්න ප්‍රමාණය අවසන් වී ඇත. කරුණාකර නැවත Upgrade කරන්න.", 
+                ? "🛑 අද දවසේ ඔයාට අහන්න පුළුවන් ප්‍රශ්න ප්‍රමාණය (3/3) ඉවරයි පුතේ. තව ප්‍රශ්න අහන්න වම් පැත්තේ මෙනු එකේ පහළින්ම තියෙන 'Upgrade To Premium ⚡' බොත්තම ක්ලික් කරලා Unlimited Plan එකකට යාවත්කාලීන (Upgrade) කරන්න."
+                : "🛑 ඔයාගේ පැකේජයේ ප්‍රශ්න ප්‍රමාණය අවසන් වී ඇත. කරුණාකර මෙනුවෙන් නැවත Plans පිටුවට ගොස් Upgrade කරන්න.", 
             isSystem: true 
         });
         return;
@@ -249,11 +268,18 @@ export default function Chat() {
     clearImage();
     setIsTyping(true);
 
-    // 🔥 Update DB usage immediately for instant UI feedback
     const userId = user?.uid || user?.id;
+
+    // 🔥 Update DB usage immediately for instant UI feedback
     if (!isUnlimited && userId) {
         setCreditsLeft(prev => prev - 1);
-        supabase.rpc('increment_credits', { userid: userId }).catch(console.error);
+        
+        // Promise එක async/await හරහා නිවැරදිව handle කිරීම
+        const updateCredits = async () => {
+            const { error } = await supabase.rpc('increment_credits', { userid: userId });
+            if (error) console.error("Error updating credits:", error);
+        };
+        updateCredits();
     }
 
     try {

@@ -6,7 +6,8 @@ import {
     GoogleAuthProvider, 
     signInWithPopup 
 } from 'firebase/auth';
-import { app } from '../lib/firebase'; // Make sure this path is correct
+import { app } from '../lib/firebase';
+import { supabase } from '../lib/supabase'; // 🔥 අලුතින් එකතු කලා
 
 const AuthContext = createContext();
 
@@ -17,13 +18,36 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const auth = getAuth(app);
 
+    // 🔥 Generate a random token for the session
+    const generateSessionToken = () => {
+        return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    };
+
     // 🔥 LOGIN FUNCTION
     const signInWithGoogle = async () => {
         const provider = new GoogleAuthProvider();
         try {
             const result = await signInWithPopup(auth, provider);
-            // Login සාර්ථකයි! (Backend sync එක පස්සේ බලාගමු)
-            return result.user;
+            const currentUser = result.user;
+            
+            // 1. Create a new token
+            const newToken = generateSessionToken();
+            
+            // 2. Save it locally
+            localStorage.setItem(`myguru_session_token_${currentUser.uid}`, newToken);
+
+            // 3. Save it to Database (Supabase)
+            const { error } = await supabase
+                .from('profiles')
+                .upsert({ 
+                    id: currentUser.uid, 
+                    current_session_token: newToken,
+                    last_reset_date: new Date().toISOString().split('T')[0] // Just to ensure profile exists
+                }, { onConflict: 'id' });
+
+            if (error) console.error("Error saving session token:", error);
+            
+            return currentUser;
         } catch (error) {
             console.error("Google Sign In Error:", error);
             throw error;
@@ -31,7 +55,12 @@ export const AuthProvider = ({ children }) => {
     };
 
     // 🔥 LOGOUT FUNCTION
-    const logout = () => signOut(auth);
+    const logout = async () => {
+        if (user) {
+            localStorage.removeItem(`myguru_session_token_${user.uid}`);
+        }
+        await signOut(auth);
+    };
 
     // 🔥 AUTH STATE LISTENER
     useEffect(() => {
@@ -42,10 +71,9 @@ export const AuthProvider = ({ children }) => {
         return unsubscribe;
     }, [auth]);
 
-    // Values to export
     const value = {
         user,
-        signInWithGoogle, // ✅ මේක අනිවාර්යයෙන් තියෙන්න ඕනේ Navbar එකට
+        signInWithGoogle, 
         logout
     };
 

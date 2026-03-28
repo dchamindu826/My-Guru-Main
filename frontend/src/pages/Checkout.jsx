@@ -20,10 +20,10 @@ export default function Checkout() {
   const [copiedField, setCopiedField] = useState('');
 
   const bankDetails = {
-    name: "C. D. M. Perera",
-    bank: "Commercial Bank",
-    account: "8001234567",
-    branch: "Colombo Fort"
+    name: "W M J P KARUNARATHNE",
+    bank: "Peoples Bank",
+    account: "173200170056464",
+    branch: "Pundaluoya Branch"
   };
 
   const copyToClipboard = (text, field) => {

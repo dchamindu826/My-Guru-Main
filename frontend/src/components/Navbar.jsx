@@ -39,19 +39,26 @@ export default function Navbar() {
   };
 
   return (
-    <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-[#050505]/80 backdrop-blur-md border-b border-white/5 py-3' : 'bg-transparent py-5'}`}>
+    <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-[#050505]/80 backdrop-blur-md border-b border-white/5 py-2' : 'bg-transparent py-4'}`}>
       <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
         
-        <Link to="/" className="flex items-center gap-3 group">
-          <img src={logo} alt="MyGuru" className="w-10 h-10 object-contain group-hover:scale-105 transition-transform duration-300" />
-          <span className="text-2xl font-black text-white tracking-tight">My <span className="text-amber-500">Guru</span></span>
+        {/* 🔥 Logo Section - Fixed the sizing and alignment */}
+        <Link to="/" className="flex items-center gap-2 group">
+          <img 
+            src={logo} 
+            alt="MyGuru" 
+            className={`object-contain transition-all duration-300 group-hover:scale-105 ${isScrolled ? 'w-14 h-14' : 'w-20 h-20'}`} 
+            style={{ marginTop: isScrolled ? '0' : '-8px' }} // Adjust slight visual offsets
+          />
+          <span className={`font-black text-white tracking-tight transition-all duration-300 ${isScrolled ? 'text-2xl' : 'text-3xl'}`}>
+            My <span className="text-amber-500">Guru</span>
+          </span>
         </Link>
 
         {/* DESKTOP */}
         <div className="hidden md:flex items-center gap-8">
           <div className="flex items-center gap-6 text-sm font-medium text-gray-300">
             <Link to="/" className="hover:text-amber-500 transition">Home</Link>
-            {/* 🔥 Plans Link REMOVED */}
             <Link to="/services" className="hover:text-amber-500 transition">Services</Link>
             <Link to="/about" className="hover:text-amber-500 transition">About Us</Link>
           </div>
@@ -74,9 +81,17 @@ export default function Navbar() {
                           <p className="text-sm font-bold text-white truncate">{user.displayName || 'Student'}</p>
                           <p className="text-xs text-gray-500 truncate">{user.email}</p>
                         </div>
-                        <Link to="/profile" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/5 hover:text-white transition"><UserIcon size={16} /> My Profile</Link>
-                        {user.email === 'admin@codeaura.com' && <Link to="/admin/dashboard" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/5 hover:text-white transition"><LayoutDashboard size={16} /> Admin Panel</Link>}
-                        <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition mt-1"><LogOut size={16} /> Logout</button>
+                        <Link to="/profile" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/5 hover:text-white transition" onClick={() => setIsProfileOpen(false)}>
+                          <UserIcon size={16} /> My Profile
+                        </Link>
+                        {user.email === 'admin@codeaura.com' && (
+                          <Link to="/admin/dashboard" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-white/5 hover:text-white transition" onClick={() => setIsProfileOpen(false)}>
+                            <LayoutDashboard size={16} /> Admin Panel
+                          </Link>
+                        )}
+                        <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition mt-1">
+                          <LogOut size={16} /> Logout
+                        </button>
                       </motion.div>
                     </>
                   )}
@@ -105,8 +120,8 @@ export default function Navbar() {
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="md:hidden bg-[#0A0A0A] border-b border-white/10 overflow-hidden">
             <div className="px-6 py-8 space-y-6">
               <Link to="/" className="block text-lg font-medium text-gray-300" onClick={() => setIsMobileMenuOpen(false)}>Home</Link>
-              {/* 🔥 Plans Link REMOVED in Mobile too */}
               <Link to="/services" className="block text-lg font-medium text-gray-300" onClick={() => setIsMobileMenuOpen(false)}>Services</Link>
+              <Link to="/about" className="block text-lg font-medium text-gray-300" onClick={() => setIsMobileMenuOpen(false)}>About Us</Link>
               
               {user ? (
                 <div className="pt-6 border-t border-white/10">

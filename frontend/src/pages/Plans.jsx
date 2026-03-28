@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom'; // 🔥 අලුතින් එකතු කළා
 import { Check, Crown, Zap, Building2, GraduationCap, Star, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Plans() {
   const [activeTab, setActiveTab] = useState('student');
+  const navigate = useNavigate(); // 🔥 අලුතින් එකතු කළා
 
   // 🔥 STUDENT PLANS (Hardcoded - No Backend Needed)
   const studentPlans = [
@@ -15,7 +17,7 @@ export default function Plans() {
       desc_en: 'Perfect for trying out MyGuru.',
       desc_si: 'MyGuru අත්හදා බැලීමට සුදුසුයි.',
       features: ['3 Questions Per Day', 'Basic AI Answers', 'No Past Papers'],
-      link: 'https://wa.me/94701234567?text=I want to join Free Plan'
+      link: 'chat'
     },
     {
       id: 'scholar',
@@ -27,7 +29,7 @@ export default function Plans() {
       desc_en: 'Daily help for serious students.',
       desc_si: 'දිනපතා ඉගෙන ගන්නා සිසුන් සඳහා.',
       features: ['100 Questions Per Day', 'Faster AI Responses', 'Access Past Papers', 'Priority Support'],
-      link: 'https://wa.me/94701234567?text=I want to buy Scholar Plan'
+      link: '/checkout' // 🔥 වෙනස් කළා
     },
     {
       id: 'genius',
@@ -38,7 +40,7 @@ export default function Plans() {
       desc_en: 'Unlimited access to everything.',
       desc_si: 'සීමාවකින් තොරව සියල්ල ලබාගන්න.',
       features: ['Unlimited Questions', 'Teacher Verification', 'WhatsApp Bot Access', 'Personalized Study Plan'],
-      link: 'https://wa.me/94701234567?text=I want to buy Genius Plan'
+      link: '/checkout' // 🔥 වෙනස් කළා
     }
   ];
 
@@ -53,7 +55,7 @@ export default function Plans() {
       desc_en: 'Basic automation for small classes.',
       desc_si: 'කුඩා පන්ති සඳහා මූලික ස්වයංක්‍රීයකරණය.',
       features: ['Simple Chatbot', 'WhatsApp Integration', 'Email Support'],
-      link: 'https://wa.me/94701234567?text=I need Institute Starter Plan'
+      link: 'https://wa.me/94714941559?text=I need Institute Starter Plan'
     },
     {
       id: 'inst-pro',
@@ -64,7 +66,7 @@ export default function Plans() {
       desc_en: 'Full AI suite for large institutes.',
       desc_si: 'විශාල ආයතන සඳහා සම්පූර්ණ AI විසඳුම.',
       features: ['Advanced RAG Bot', 'Auto Slip Verification', 'Full Database Sync', '24/7 Priority Support'],
-      link: 'https://wa.me/94701234567?text=I need Institute Pro Plan'
+      link: 'https://wa.me/94714941559?text=I need Institute Pro Plan'
     }
   ];
 
@@ -163,7 +165,15 @@ export default function Plans() {
                         </ul>
 
                         <button 
-                            onClick={() => window.open(plan.link, '_blank')}
+                            onClick={() => {
+                                // 🔥 Free එක නම් WhatsApp යයි, අනිත් ඒවා Checkout එකට යයි
+                                if (plan.id === 'free') {
+                                    window.open(plan.link, '_blank');
+                                } else {
+                                    // මෙතනදී අපි checkout page එකට plan එකේ විස්තරත් යවනවා, එතකොට ඒ page එකට ලේසියි අඳුරගන්න ළමයා මොකක්ද select කරේ කියලා
+                                    navigate('/checkout', { state: { selectedPlan: plan.name, price: plan.price } });
+                                }
+                            }}
                             className={`w-full py-3.5 rounded-xl font-bold transition flex items-center justify-center gap-2 ${getButtonColor(plan.color)}`}
                         >
                             Select Plan <ArrowRight size={18}/>

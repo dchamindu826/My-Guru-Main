@@ -131,17 +131,23 @@ router.post('/', async (req, res) => {
 // ==========================================
 // 2. GET USER HISTORY (Profile Page)
 // ==========================================
-router.get('/user/:userId', async (req, res) => {
-    const userId = req.params.userId;
-    
-    const { data, error } = await supabase
-        .from('payments')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+router.get('/user/:id', async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const userEmail = req.query.email; // ෆ්‍රන්ට්එන්ඩ් එකෙන් ඊමේල් එකත් එවන්න ඕනේ
 
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+        // user_id එකෙන් හෝ user_email එකෙන් දෙකෙන්ම චෙක් කරනවා!
+        const { data, error } = await supabase
+            .from('payments')
+            .select('*')
+            .or(`user_id.eq.${userId},user_email.eq.${userEmail}`)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        res.status(200).json(data);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // ==========================================

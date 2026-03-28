@@ -63,7 +63,7 @@ export default function About() {
                         <User size={32} className="text-gray-400"/>
                     </div>
                     <div>
-                        <h3 className="text-2xl font-bold text-white">Mr. Founder Name</h3>
+                        <h3 className="text-2xl font-bold text-white">Janith Karunarathne</h3>
                         <p className="text-amber-500 text-xs font-bold uppercase tracking-widest">Founder & CEO</p>
                     </div>
                 </div>
@@ -121,7 +121,7 @@ export default function About() {
       {/* CALL TO ACTION */}
       <section className="py-20 text-center px-6">
           <h2 className="text-3xl font-bold mb-6">Join the Revolution</h2>
-          <button onClick={() => window.open('https://wa.me/94701234567', '_blank')} className="bg-white text-black px-8 py-3 rounded-full font-bold hover:bg-gray-200 transition flex items-center gap-2 mx-auto">
+          <button onClick={() => window.open('https://wa.me/94714941559', '_blank')} className="bg-white text-black px-8 py-3 rounded-full font-bold hover:bg-gray-200 transition flex items-center gap-2 mx-auto">
               Contact Us <Rocket size={20}/>
           </button>
       </section>

@@ -112,7 +112,10 @@ export default function Profile() {
                 </div>
             </div>
 
-            <div className="flex gap-3 z-10 w-full md:w-auto">
+            <div className="flex flex-col md:flex-row gap-3 z-10 w-full md:w-auto">
+                <button onClick={() => navigate('/plans')} className="w-full md:w-auto py-3 px-6 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black text-sm font-black flex items-center justify-center gap-2 transition shadow-lg shadow-amber-500/20 transform hover:scale-105">
+                    <Crown size={18} /> View Plans
+                </button>
                 <button onClick={handleLogout} className="w-full md:w-auto py-3 px-6 rounded-xl bg-[#222] hover:bg-[#333] border border-white/5 hover:border-white/20 text-white text-sm font-bold flex items-center justify-center gap-2 transition shadow-lg">
                     <LogOut size={18} /> Logout
                 </button>

@@ -438,40 +438,29 @@ class SessionUpdateRequest(BaseModel):
 @app.post("/update_session_and_credits")
 def update_session_and_credits(request: SessionUpdateRequest):
     try:
-        # 1. Check if user profile exists
-        const { data: profile, error: selectError } = await supabase
-            .from('profiles')
-            .select('credits_used, last_reset_date')
-            .eq('id', request.user_id)
-            .maybeSingle();
+        # 1. Check if user profile exists (Python Syntax)
+        res = supabase.table('profiles').select('credits_used, last_reset_date').eq('id', request.user_id).execute()
+        
+        profile = res.data[0] if len(res.data) > 0 else None
 
-        if selectError: raise selectError;
-
-        let creditsUsed = profile?.credits_used || 0;
-        const lastReset = profile?.last_reset_date;
-        const todayStr = datetime.datetime.utcnow().isoformat().split('T')[0];
+        credits_used = profile.get('credits_used', 0) if profile else 0
+        last_reset = profile.get('last_reset_date') if profile else None
+        today_str = datetime.datetime.utcnow().isoformat().split('T')[0]
 
         # Daily reset logic (Server-side)
-        if (lastReset !== todayStr) {
-            creditsUsed = 0;
-        }
+        if last_reset != today_str:
+            credits_used = 0
 
         # 2. Update session token and reset date securely (Backend Direct DB Call)
-        # මෙතනදී අපි 'profiles' table එකේ RLS block කරපු නිසා, API එක ඇතුලෙන්ම
-        # Full Admin Key (SERVICE_ROLE_KEY) පාවිච්චි කරලා ආරක්ෂිතව update කරනවා.
-        const { error: updateError } = await supabase
-            .from('profiles')
-            .upsert({ 
-                id: request.user_id, 
-                current_session_token: request.session_token,
-                last_reset_date: todayStr,
-                # credits_used: creditsUsed // මෙතනදී අපි credits වෙනස් කරන්නේ නෑ, 
-                                          # ප්‍රශ්නයක් ඇහුවම විතරක් credits අඩු කරනවා.
-            }, { onConflict: 'id' });
+        update_data = {
+            "id": request.user_id,
+            "current_session_token": request.session_token,
+            "last_reset_date": today_str
+        }
+        
+        supabase.table('profiles').upsert(update_data).execute()
 
-        if (updateError) throw updateError;
-
-        return {"status": "success", "message": "Session updated securely"};
+        return {"status": "success", "message": "Session updated securely"}
 
     except Exception as e:
         print(f"❌ Secure Session Update Error: {e}")

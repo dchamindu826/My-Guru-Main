@@ -24,29 +24,40 @@ export const AuthProvider = ({ children }) => {
     };
 
     // 🔥 LOGIN FUNCTION
-    const signInWithGoogle = async () => {
-        const provider = new GoogleAuthProvider();
+    const handleGoogleLogin = async () => {
         try {
             const result = await signInWithPopup(auth, provider);
             const currentUser = result.user;
             
-            // 1. Create a new token
+            // 1. Generate a new token locally
             const newToken = generateSessionToken();
             
-            // 2. Save it locally
+            // 2. Save it to LocalStorage
             localStorage.setItem(`myguru_session_token_${currentUser.uid}`, newToken);
 
-            // 3. Save it to Database (Supabase)
-            const { error } = await supabase
-                .from('profiles')
-                .upsert({ 
-                    id: currentUser.uid, 
-                    current_session_token: newToken,
-                    last_reset_date: new Date().toISOString().split('T')[0] // Just to ensure profile exists
-                }, { onConflict: 'id' });
+            // 🔥 3. Call Backend Endpoint to update DB Securely (Instead of Supabase Direct Call)
+            // මෙතනදී අපි frontend එකෙන් Supabase එකට කතා කරන්නේ නෑ.
+            // ඒ වෙනුවට අපේ Node.js / FastAPI Backend එකට user id එකයි token එකයි යවනවා.
+            try {
+                const response = await fetch('https://myguru.lumi-automation.com/brain/update_session_and_credits', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: currentUser.uid,
+                        session_token: newToken
+                    })
+                });
 
-            if (error) console.error("Error saving session token:", error);
-            
+                if (!response.ok) throw new Error("Backend Update Failed");
+                const data = await response.ok;
+                console.log("✅ Session updated securely via backend");
+
+            } catch (backendErr) {
+                console.error("❌ Secure Session Update Error:", backendErr);
+                // Option: Logout if backend fails, or just alert user
+                // await logout(); navigate('/'); return;
+            }
+
             return currentUser;
         } catch (error) {
             console.error("Google Sign In Error:", error);

@@ -4,6 +4,7 @@ const supabase = require('../config/supabase'); // Supabase Import එක
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken'); 
 const moment = require('moment'); // npm install moment කරගන්න අමතක කරන්න එපා
+const cron = require('node-cron');
 
 // ==========================================
 // 1. ADMIN MANAGEMENT
@@ -252,6 +253,124 @@ router.get('/knowledge/summary', async (req, res) => {
     } catch (error) {
         console.error("Knowledge Summary Error:", error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// ==========================================
+// BACKUP LOGIC FUNCTION (Manual & Auto දෙකටම)
+// ==========================================
+const performDatabaseBackup = async () => {
+    try {
+        console.log("⏳ Starting Database Backup...");
+
+        // 1. ඔයාගේ Screenshot එකේ තිබ්බ වැදගත්ම Tables වලින් Data ගන්නවා
+        const { data: admins } = await supabase.from('admins').select('id, full_name, email, role, created_at'); 
+        const { data: profiles } = await supabase.from('profiles').select('*');
+        const { data: payments } = await supabase.from('payments').select('*');
+        const { data: plans } = await supabase.from('plans').select('*');
+        const { data: documents } = await supabase.from('documents').select('*');
+        const { data: token_usage } = await supabase.from('token_usage').select('*');
+        const { data: user_credits } = await supabase.from('user_credits').select('*');
+        // (Chat logs වගේ ලොකු tables දානවා නම් මෙතනට පේළි එකතු කරන්න)
+
+        // ඩේටා ටික එක JSON එකකට දාගන්නවා
+        const backupData = {
+            timestamp: moment().toISOString(),
+            data: {
+                admins: admins || [],
+                profiles: profiles || [],
+                payments: payments || [],
+                plans: plans || [],
+                documents: documents || [],
+                token_usage: token_usage || [],
+                user_credits: user_credits || []
+            }
+        };
+
+        const jsonString = JSON.stringify(backupData);
+        const fileName = `backup_${moment().format('YYYYMMDD_HHmmss')}.json`;
+
+        // 2. Supabase Storage 'backups' bucket එකට අප්ලෝඩ් කරනවා
+        const { error: uploadError } = await supabase.storage
+            .from('backups')
+            .upload(fileName, jsonString, {
+                contentType: 'application/json',
+                upsert: true
+            });
+
+        if (uploadError) throw uploadError;
+
+        // 3. පරණ Backups මකා දැමීම (අලුත්ම 2ක් විතරක් ඉතුරු කිරීම)
+        const { data: files, error: listError } = await supabase.storage.from('backups').list();
+        if (listError) throw listError;
+
+        if (files && files.length > 2) {
+            files.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            const filesToDelete = files.slice(0, files.length - 2).map(f => f.name);
+            
+            if (filesToDelete.length > 0) {
+                await supabase.storage.from('backups').remove(filesToDelete);
+            }
+        }
+
+        console.log(`✅ Backup Successful! File: ${fileName}`);
+        return { success: true, fileName };
+
+    } catch (error) {
+        console.error("❌ Backup Creation Error:", error);
+        return { success: false, error: error.message };
+    }
+};
+
+// ==========================================
+// CRON JOB SETUP (VPS එකේ Auto දුවන්න)
+// ==========================================
+// හැම පැය 12කට සැරයක්ම මේක රන් වෙනවා ("0 */12 * * *")
+// ඔයාට පැය 24කට සැරයක් (රෑ 12ට) ඕන නම් "0 0 * * *" කියලා වෙනස් කරන්න.
+cron.schedule('0 */12 * * *', async () => {
+    console.log("⏰ Running Scheduled Auto-Backup...");
+    await performDatabaseBackup();
+});
+
+
+// ==========================================
+// API ROUTES (Frontend එකෙන් කතා කරන්න)
+// ==========================================
+
+// 1. Manual Backup Route (Button Click එකට)
+router.post('/create-backup', async (req, res) => {
+    const result = await performDatabaseBackup();
+    if (result.success) {
+        res.status(200).json({ success: true, message: "Backup created successfully! Old backups cleaned.", fileName: result.fileName });
+    } else {
+        res.status(500).json({ success: false, error: "Backup failed" });
+    }
+});
+
+// 2. Get Latest Backup Download Link
+router.get('/latest-backup', async (req, res) => {
+    try {
+        const { data: files, error } = await supabase.storage.from('backups').list();
+        if (error) throw error;
+
+        if (!files || files.length === 0) {
+            return res.status(404).json({ success: false, error: "No backups found" });
+        }
+
+        files.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const latestFile = files[0].name;
+
+        // Download කරන්න පුළුවන් Signed URL එකක් හදනවා (පැය 1ක් වලංගුයි)
+        const { data: urlData, error: urlError } = await supabase.storage
+            .from('backups')
+            .createSignedUrl(latestFile, 3600);
+
+        if (urlError) throw urlError;
+
+        res.json({ success: true, downloadUrl: urlData.signedUrl, fileName: latestFile });
+    } catch (error) {
+        console.error("Fetch Latest Backup Error:", error);
+        res.status(500).json({ success: false, error: "Failed to fetch backup link" });
     }
 });
 

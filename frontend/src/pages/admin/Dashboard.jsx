@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { 
   Users, DollarSign, MessageSquare, 
-  TrendingUp, AlertCircle, Code, Star, Loader 
+  TrendingUp, AlertCircle, Code, Star, Loader, Database, DownloadCloud, RefreshCw
 } from 'lucide-react';
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -15,9 +15,13 @@ const COLORS = ['#3b82f6', '#fbbf24', '#10b981', '#f97316'];
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [recentFeedbacks, setRecentFeedbacks] = useState([]);
-  const [tokenStats, setTokenStats] = useState({ totalTokens: 0, totalCost: 0 }); // <-- New State
+  const [tokenStats, setTokenStats] = useState({ totalTokens: 0, totalCost: 0 }); 
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('Monthly');
+
+  // Backup States
+  const [isCreatingBackup, setIsCreatingBackup] = useState(false);
+  const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
 
   // Fetch Node Backend Data
   useEffect(() => {
@@ -43,8 +47,6 @@ export default function Dashboard() {
     const fetchTokenStats = async () => {
       try {
         const tokenRes = await api.get(`/admin/token-stats?filter=${timeRange}`);
-        
-        // tokenRes.json() අයින් කළා. කෙලින්ම data එක ගන්නවා.
         if (tokenRes.data && tokenRes.data.summary) {
             setTokenStats(tokenRes.data.summary);
         }
@@ -54,6 +56,49 @@ export default function Dashboard() {
     };
     fetchTokenStats();
   }, [timeRange]);
+
+  // Handle Manual Backup Creation
+  const handleCreateBackup = async () => {
+    if(!window.confirm("Are you sure you want to generate a new backup? Oldest backups will be deleted.")) return;
+    
+    setIsCreatingBackup(true);
+    try {
+        const res = await api.post('/admin/create-backup');
+        if(res.data.success) {
+            alert(res.data.message);
+        } else {
+            alert("Backup creation failed.");
+        }
+    } catch (error) {
+        console.error(error);
+        alert("Server error while creating backup.");
+    }
+    setIsCreatingBackup(false);
+  };
+
+  // Handle Backup Download
+  const handleDownloadBackup = async () => {
+    setIsDownloadingBackup(true);
+    try {
+        const res = await api.get('/admin/latest-backup');
+        if(res.data.success && res.data.downloadUrl) {
+            // Create a temporary link to download the file
+            const link = document.createElement('a');
+            link.href = res.data.downloadUrl;
+            link.setAttribute('download', res.data.fileName || 'backup.json');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } else {
+            alert("No backup found! Please create a backup first.");
+        }
+    } catch (error) {
+        console.error(error);
+        alert("Failed to fetch backup link.");
+    }
+    setIsDownloadingBackup(false);
+  };
+
 
   if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader className="animate-spin text-amber-500" size={40}/></div>;
 
@@ -166,7 +211,7 @@ export default function Dashboard() {
 
       </div>
 
-      {/* FEEDBACKS & RECENT ACTIVITY */}
+      {/* BOTTOM SECTION */}
       <div className="grid md:grid-cols-2 gap-8">
         
         {/* REAL FEEDBACKS PANEL */}
@@ -206,32 +251,56 @@ export default function Dashboard() {
             </div>
         </div>
 
-        {/* Gemini API Usage & Cost Overview */}
-        <div className="bg-[#111] border border-white/10 rounded-2xl p-6">
-             <h3 className="text-lg font-bold mb-6 flex items-center gap-2"><Code size={18} className="text-purple-400"/> Gemini API Usage & Cost</h3>
-             <div className="space-y-6">
-                <div className="flex justify-between items-center p-4 bg-purple-900/10 border border-purple-500/20 rounded-xl">
-                    <div>
-                        <p className="text-xs text-purple-400 font-bold uppercase">{timeRange} Cost</p>
-                        <p className="text-2xl font-black text-white">${tokenStats.totalCost.toFixed(4)}</p>
+        {/* GEMINI USAGE & DATABASE BACKUP */}
+        <div className="space-y-8">
+            {/* Gemini API Usage */}
+            <div className="bg-[#111] border border-white/10 rounded-2xl p-6">
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2"><Code size={18} className="text-purple-400"/> API Usage & Cost</h3>
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center p-4 bg-purple-900/10 border border-purple-500/20 rounded-xl">
+                        <div>
+                            <p className="text-xs text-purple-400 font-bold uppercase">{timeRange} Cost</p>
+                            <p className="text-2xl font-black text-white">${tokenStats.totalCost.toFixed(4)}</p>
+                        </div>
+                        <div className="h-10 w-10 bg-purple-500 rounded-lg flex items-center justify-center text-black font-bold">
+                            <DollarSign size={20} />
+                        </div>
                     </div>
-                    <div className="h-10 w-10 bg-purple-500 rounded-lg flex items-center justify-center text-black font-bold">
-                        <DollarSign size={20} />
+                    <div className="space-y-2">
+                        <p className="text-xs text-gray-500 font-bold uppercase">Tokens Used ({timeRange})</p>
+                        <p className="text-sm text-gray-300 font-bold">{tokenStats.totalTokens.toLocaleString()} Tokens</p>
                     </div>
                 </div>
-                
-                <div className="space-y-2">
-                    <p className="text-xs text-gray-500 font-bold uppercase">Tokens Used ({timeRange})</p>
-                    <p className="text-sm text-gray-300 font-bold">{tokenStats.totalTokens.toLocaleString()} Tokens</p>
-                </div>
+            </div>
 
-                <button 
-                  onClick={() => setTimeRange(prev => prev)} 
-                  className="w-full py-3 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition text-sm"
-                >
-                    Refresh Usage Stats
-                </button>
-             </div>
+            {/* Database Backup Manager */}
+            <div className="bg-[#111] border border-amber-500/20 rounded-2xl p-6 relative overflow-hidden">
+                {/* Background glow effect */}
+                <div className="absolute top-0 right-0 -mr-16 -mt-16 w-32 h-32 bg-amber-500/10 blur-3xl rounded-full pointer-events-none"></div>
+
+                <h3 className="text-lg font-bold mb-2 flex items-center gap-2"><Database size={18} className="text-amber-500"/> System Backup</h3>
+                <p className="text-xs text-gray-400 mb-6">Create manual backups or download the latest system database snapshot.</p>
+
+                <div className="flex flex-col sm:flex-row gap-4">
+                    <button 
+                        onClick={handleCreateBackup}
+                        disabled={isCreatingBackup}
+                        className="flex-1 flex items-center justify-center gap-2 py-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 font-bold rounded-xl transition text-sm disabled:opacity-50"
+                    >
+                        {isCreatingBackup ? <RefreshCw className="animate-spin" size={16}/> : <Database size={16}/>}
+                        {isCreatingBackup ? 'Creating...' : 'Create Backup'}
+                    </button>
+                    
+                    <button 
+                        onClick={handleDownloadBackup}
+                        disabled={isDownloadingBackup}
+                        className="flex-1 flex items-center justify-center gap-2 py-3 bg-white hover:bg-gray-200 text-black font-bold rounded-xl transition text-sm disabled:opacity-50"
+                    >
+                        {isDownloadingBackup ? <Loader className="animate-spin" size={16}/> : <DownloadCloud size={16}/>}
+                        {isDownloadingBackup ? 'Fetching...' : 'Download Latest'}
+                    </button>
+                </div>
+            </div>
         </div>
 
       </div>

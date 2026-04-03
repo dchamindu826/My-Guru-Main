@@ -24,7 +24,7 @@ app = FastAPI(title="My Guru Brain API")
 # --- CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://myguru.lumi-automation.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

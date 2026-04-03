@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 
 export default function WhatsAppWidget() {
   // Replace with your WhatsApp Number
-  const WA_NUMBER = "94701234567"; 
+  const WA_NUMBER = "94714941559"; 
 
   return (
     <a 

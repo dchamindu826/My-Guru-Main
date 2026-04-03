@@ -374,4 +374,41 @@ router.get('/latest-backup', async (req, res) => {
     }
 });
 
+// ==========================================
+// BULK UPLOAD / ASSIGN PLANS TO USERS
+// ==========================================
+router.post('/bulk-assign-plans', async (req, res) => {
+    const { users } = req.body; // Frontend එකෙන් එවන Array එක
+
+    if (!users || !Array.isArray(users) || users.length === 0) {
+        return res.status(400).json({ success: false, message: "No user data provided" });
+    }
+
+    try {
+        // Supabase එකට දාන්න පුළුවන් විදිහට Data ටික හදාගන්නවා
+        const formattedData = users.map(u => ({
+            name: u.name,
+            email: u.email,
+            whatsapp: u.whatsapp,
+            plan_type: u.planType,
+            start_date: u.startDate,
+            end_date: u.endDate,
+            price: u.price,
+            status: 'active' // කෙලින්ම ඇක්ටිව් කරනවා
+        }));
+
+        // ඔයාගේ ළමයින්ගේ plans තියාගන්න table එකේ නම මෙතනට දෙන්න (උදා: user_subscriptions හෝ profiles)
+        const { data, error } = await supabase
+            .from('user_subscriptions') 
+            .insert(formattedData);
+
+        if (error) throw error;
+
+        res.status(200).json({ success: true, message: `${formattedData.length} Users successfully assigned to plans!` });
+    } catch (error) {
+        console.error("Bulk Upload Error:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;

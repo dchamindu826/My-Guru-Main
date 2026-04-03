@@ -2,24 +2,27 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 
-// 1. Bulk Add Students (CSV Data)
+// 1. Bulk Add Students (Excel Data & Manual Entry)
 router.post('/bulk-add', async (req, res) => {
     try {
-        const { students, unitPrice, durationMonths } = req.body;
+        const { students } = req.body;
 
-        // Calculate Expiry Date
-        const expiryDate = new Date();
-        expiryDate.setMonth(expiryDate.getMonth() + parseInt(durationMonths));
+        if (!students || !Array.isArray(students) || students.length === 0) {
+            return res.status(400).json({ error: "No student data provided" });
+        }
 
+        // Frontend එකෙන් එන Data ටික (Name, Email, WhatsApp, PlanType, StartDate, EndDate, Price) 
+        // ඔයාගේ 'payments' table එකේ තියෙන columns වලට මැච් කරනවා
         const recordsToInsert = students.map(student => ({
             student_name: student.name,
             user_email: student.email,
-            whatsapp_number: student.whatsapp,
-            amount: parseFloat(unitPrice),
-            package_name: 'Institute_Unlimited',
+            whatsapp_number: String(student.whatsapp), // String එකක් විදිහට යවමු ආරක්ෂාවට
+            package_name: student.planType || 'Institute_Unlimited', 
+            amount: parseFloat(student.price) || 0,
             status: 'approved',
-            expiry_date: expiryDate.toISOString(),
-            created_at: new Date().toISOString()
+            expiry_date: new Date(student.endDate).toISOString(), 
+            // start_date එකක් payments ටේබල් එකේ නැති නිසා created_at එකට දානවා
+            created_at: student.startDate ? new Date(student.startDate).toISOString() : new Date().toISOString()
         }));
 
         const { data, error } = await supabase.from('payments').insert(recordsToInsert).select();
@@ -38,7 +41,7 @@ router.get('/students', async (req, res) => {
         const { data, error } = await supabase
             .from('payments')
             .select('*')
-            .eq('package_name', 'Institute_Unlimited')
+            //.eq('package_name', 'Institute_Unlimited') // මේක අයින් කළා, නැත්නම් අලුත් Plan (Monthly/Full) පේන්නේ නැති වෙයි
             .order('created_at', { ascending: false });
 
         if (error) throw error;

@@ -82,19 +82,26 @@ export default function Dashboard() {
     try {
         const res = await api.get('/admin/latest-backup');
         if(res.data.success && res.data.downloadUrl) {
-            // Create a temporary link to download the file
+            // ෆයිල් එක fetch කරලා blob එකක් විදිහට ගන්නවා (බලහත්කාරයෙන් Download වෙන්න)
+            const response = await fetch(res.data.downloadUrl);
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            
             const link = document.createElement('a');
-            link.href = res.data.downloadUrl;
-            link.setAttribute('download', res.data.fileName || 'backup.json');
+            link.href = blobUrl;
+            link.download = res.data.fileName || 'Database_Backup.json';
             document.body.appendChild(link);
             link.click();
             link.remove();
+            
+            // Memory එක clear කරනවා
+            window.URL.revokeObjectURL(blobUrl);
         } else {
             alert("No backup found! Please create a backup first.");
         }
     } catch (error) {
         console.error(error);
-        alert("Failed to fetch backup link.");
+        alert("Failed to download backup.");
     }
     setIsDownloadingBackup(false);
   };

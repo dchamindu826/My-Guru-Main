@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Users, DollarSign, Search, Trash2, Edit2, Check, X } from 'lucide-react';
-import { api } from '../../lib/api'; // ඔයාගේ axios api instance එක
+import { Upload, Users, DollarSign, Search, Trash2, Edit2, Check, X, Plus, Save, FileSpreadsheet, Loader } from 'lucide-react';
+import * as XLSX from 'xlsx'; // අලුතින් එකතු කළා
+import { api } from '../../lib/api';
 
 export default function InstituteStudents() {
     const [students, setStudents] = useState([]);
     const [searchTerm, setSearchTerm] = useState("");
-    const [csvFile, setCsvFile] = useState(null);
-    const [unitPrice, setUnitPrice] = useState(5000);
-    const [durationMonths, setDurationMonths] = useState(6);
-    const [parsedStudents, setParsedStudents] = useState([]);
     
+    // නවතම Bulk Upload සහ Manual Entry State එක
+    const [parsedStudents, setParsedStudents] = useState([]);
+    const [isSaving, setIsSaving] = useState(false);
+    const [formData, setFormData] = useState({
+        name: '', email: '', whatsapp: '', planType: 'Monthly', startDate: '', endDate: '', price: ''
+    });
+    
+    // පරණ Edit State එක
     const [editingId, setEditingId] = useState(null);
     const [editDate, setEditDate] = useState("");
 
@@ -27,52 +32,68 @@ export default function InstituteStudents() {
         fetchStudents();
     }, []);
 
-    // Handle CSV File Selection & Parsing
-    const handleFileChange = (e) => {
-        const file = e.target.files[0];
-        setCsvFile(file);
-
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const text = event.target.result;
-                const lines = text.split('\n');
-                const data = [];
-                // Assuming CSV Format: Name, Email, WhatsApp
-                for (let i = 1; i < lines.length; i++) {
-                    if (!lines[i].trim()) continue;
-                    const cols = lines[i].split(',');
-                    if (cols.length >= 3) {
-                        data.push({
-                            name: cols[0].trim(),
-                            email: cols[1].trim(),
-                            whatsapp: cols[2].trim()
-                        });
-                    }
-                }
-                setParsedStudents(data);
-            };
-            reader.readAsText(file);
+    // 1. Manual Entry Submit
+    const handleManualSubmit = (e) => {
+        e.preventDefault();
+        // Validation - Start Date must be before End Date
+        if(new Date(formData.startDate) > new Date(formData.endDate)) {
+            return alert("End Date must be after Start Date!");
         }
+
+        setParsedStudents([{...formData}, ...parsedStudents]);
+        // Form එක clear කරනවා
+        setFormData({ name: '', email: '', whatsapp: '', planType: 'Monthly', startDate: '', endDate: '', price: '' });
     };
 
-    // Submit Bulk Data
+    // 2. Handle EXCEL File Selection & Parsing (කලින් තිබ්බ CSV එක වෙනුවට)
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const data = new Uint8Array(event.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const excelData = XLSX.utils.sheet_to_json(worksheet);
+            
+            // Excel Format: Name, Email, WhatsApp, PlanType, StartDate, EndDate, Price
+            const formattedData = excelData.map(row => ({
+                name: row.Name || '',
+                email: row.Email || '',
+                whatsapp: row.WhatsApp || '',
+                planType: row.PlanType || 'Monthly',
+                startDate: row.StartDate || '',
+                endDate: row.EndDate || '',
+                price: row.Price || 0
+            }));
+
+            setParsedStudents([...formattedData, ...parsedStudents]);
+            alert(`✅ Successfully loaded ${formattedData.length} records from Excel!`);
+        };
+        reader.readAsArrayBuffer(file);
+        e.target.value = null; // Input එක රීසෙට් කරනවා
+    };
+
+    // 3. Submit Bulk Data (Database එකට යැවීම)
     const handleBulkUpload = async () => {
-        if (parsedStudents.length === 0) return alert("Please upload a valid CSV file");
+        if (parsedStudents.length === 0) return alert("No data to save!");
+        setIsSaving(true);
         try {
+            // නිවැරදි API Endpoint එකට (institute/bulk-add) Data Array එක යවනවා
             await api.post('/institute/bulk-add', {
-                students: parsedStudents,
-                unitPrice: unitPrice,
-                durationMonths: durationMonths
+                students: parsedStudents
             });
-            alert("Students added successfully!");
-            setCsvFile(null);
+            alert("✅ Students added successfully!");
             setParsedStudents([]);
             fetchStudents(); // Refresh list
         } catch (error) {
-            alert("Error uploading students.");
+            alert("❌ Error uploading students.");
             console.error(error);
         }
+        setIsSaving(false);
     };
 
     // Delete Student
@@ -98,14 +119,19 @@ export default function InstituteStudents() {
         }
     };
 
-    // Metrics Calculations
-    const activeStudents = students.filter(s => new Date(s.expiry_date) > new Date());
-    const totalRevenue = students.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+    // Remove item from Pending List
+    const handleRemoveFromPending = (indexToRemove) => {
+        setParsedStudents(parsedStudents.filter((_, idx) => idx !== indexToRemove));
+    };
 
-    // Search Filter
+    // Metrics Calculations
+    const activeStudents = students.filter(s => new Date(s.expiry_date || s.end_date) > new Date());
+    const totalRevenue = students.reduce((acc, curr) => acc + (Number(curr.amount) || Number(curr.price) || 0), 0);
+
+    // Search Filter (දැනට තියෙන ළමයි ලිස්ට් එක)
     const filteredStudents = students.filter(s => 
-        s.student_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        s.user_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (s.student_name || s.name)?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        (s.user_email || s.email)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         s.whatsapp_number?.includes(searchTerm)
     );
 
@@ -131,41 +157,105 @@ export default function InstituteStudents() {
                 </div>
             </div>
 
-            {/* CSV Bulk Upload Section */}
-            <div className="bg-[#111] border border-white/10 p-6 rounded-2xl mb-8">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Upload size={20} className="text-amber-500"/> Bulk Import Students (CSV)</h2>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                    <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Upload CSV (Name, Email, WhatsApp)</label>
-                        <input type="file" accept=".csv" onChange={handleFileChange} className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-amber-500/10 file:text-amber-500 hover:file:bg-amber-500/20 text-gray-300"/>
-                    </div>
-                    <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Unit Price (Per Student)</label>
-                        <input type="number" value={unitPrice} onChange={e => setUnitPrice(e.target.value)} className="w-full bg-[#222] border border-white/10 rounded-xl px-4 py-2 text-white focus:border-amber-500 outline-none" />
-                    </div>
-                    <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Duration (Months)</label>
-                        <input type="number" value={durationMonths} onChange={e => setDurationMonths(e.target.value)} className="w-full bg-[#222] border border-white/10 rounded-xl px-4 py-2 text-white focus:border-amber-500 outline-none" />
-                    </div>
-                    <button onClick={handleBulkUpload} disabled={parsedStudents.length === 0} className="w-full bg-amber-500 hover:bg-amber-600 text-black font-bold py-2 rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed">
-                        Upload {parsedStudents.length > 0 ? `(${parsedStudents.length})` : ''}
-                    </button>
+            {/* ========================================================================= */}
+            {/* ADD NEW STUDENTS SECTION (MANUAL & EXCEL) */}
+            {/* ========================================================================= */}
+            <div className="grid lg:grid-cols-2 gap-8 mb-8">
+                
+                {/* MANUAL ENTRY FORM */}
+                <div className="bg-[#111] border border-white/10 p-6 rounded-2xl">
+                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Plus className="text-green-400"/> Add Student Manually</h3>
+                    <form onSubmit={handleManualSubmit} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <input type="text" placeholder="Full Name" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-[#222] border border-gray-700 rounded-lg p-2 text-sm focus:border-amber-500 outline-none"/>
+                            <input type="email" placeholder="Email Address" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-[#222] border border-gray-700 rounded-lg p-2 text-sm focus:border-amber-500 outline-none"/>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <input type="text" placeholder="WhatsApp Number" required value={formData.whatsapp} onChange={e => setFormData({...formData, whatsapp: e.target.value})} className="w-full bg-[#222] border border-gray-700 rounded-lg p-2 text-sm focus:border-amber-500 outline-none"/>
+                            <select value={formData.planType} onChange={e => setFormData({...formData, planType: e.target.value})} className="w-full bg-[#222] border border-gray-700 rounded-lg p-2 text-sm focus:border-amber-500 outline-none">
+                                <option value="Monthly">Monthly Plan</option>
+                                <option value="Full">Full Plan</option>
+                            </select>
+                        </div>
+                        <div className="grid grid-cols-3 gap-4">
+                            <input type="date" title="Start Date" required value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} className="w-full bg-[#222] border border-gray-700 rounded-lg p-2 text-sm text-gray-400 focus:border-amber-500 outline-none"/>
+                            <input type="date" title="End Date" required value={formData.endDate} onChange={e => setFormData({...formData, endDate: e.target.value})} className="w-full bg-[#222] border border-gray-700 rounded-lg p-2 text-sm text-gray-400 focus:border-amber-500 outline-none"/>
+                            <input type="number" placeholder="Price (Rs)" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full bg-[#222] border border-gray-700 rounded-lg p-2 text-sm focus:border-amber-500 outline-none"/>
+                        </div>
+                        <button type="submit" className="w-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 font-bold py-2 rounded-lg transition text-sm flex justify-center items-center gap-2">
+                            Add to Pending List
+                        </button>
+                    </form>
                 </div>
-                {parsedStudents.length > 0 && (
-                    <p className="text-sm text-green-400 mt-4">Estimated Revenue: Rs. {(parsedStudents.length * unitPrice).toLocaleString()}</p>
-                )}
+
+                {/* BULK UPLOAD (EXCEL) */}
+                <div className="bg-[#111] border border-white/10 p-6 rounded-2xl flex flex-col justify-center items-center text-center">
+                    <h3 className="text-lg font-bold mb-2 flex items-center gap-2"><FileSpreadsheet className="text-blue-400"/> Bulk Import Students</h3>
+                    <p className="text-xs text-gray-400 mb-6">Upload an Excel (.xlsx) file with columns:<br/><b>Name, Email, WhatsApp, PlanType, StartDate, EndDate, Price</b></p>
+                    
+                    <label className="cursor-pointer bg-[#222] border-2 border-dashed border-gray-600 hover:border-amber-500 rounded-xl p-8 w-full flex flex-col items-center justify-center transition">
+                        <Upload className="text-gray-400 mb-2" size={32}/>
+                        <span className="text-sm font-bold text-gray-300">Click to upload Excel File</span>
+                        <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleFileChange} />
+                    </label>
+                </div>
             </div>
 
-            {/* Students List Section */}
+            {/* ========================================================================= */}
+            {/* PENDING LIST TO SAVE */}
+            {/* ========================================================================= */}
+            {parsedStudents.length > 0 && (
+                <div className="bg-[#111] border border-amber-500/50 rounded-2xl overflow-hidden mb-8 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
+                    <div className="p-4 bg-amber-500/10 border-b border-amber-500/20 flex flex-col md:flex-row justify-between items-center gap-4">
+                        <h2 className="text-lg font-bold text-amber-500">Pending Uploads ({parsedStudents.length} Students)</h2>
+                        <button 
+                            onClick={handleBulkUpload} 
+                            disabled={isSaving} 
+                            className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg transition text-sm flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {isSaving ? <Loader size={16} className="animate-spin"/> : <Save size={16}/>} 
+                            {isSaving ? 'Saving to Database...' : 'Save All to Database'}
+                        </button>
+                    </div>
+                    <div className="overflow-x-auto p-4">
+                        <table className="w-full text-left border-collapse text-sm">
+                            <thead>
+                                <tr className="text-gray-400 border-b border-white/10">
+                                    <th className="pb-2">Name</th><th className="pb-2">Email</th><th className="pb-2">Plan</th><th className="pb-2">Period</th><th className="pb-2">Price</th><th className="pb-2"></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5 text-gray-300">
+                                {parsedStudents.map((student, idx) => (
+                                    <tr key={idx} className="hover:bg-white/[0.02]">
+                                        <td className="py-2">{student.name}</td>
+                                        <td className="py-2">{student.email}</td>
+                                        <td className="py-2"><span className="text-xs bg-white/10 px-2 py-1 rounded font-bold">{student.planType}</span></td>
+                                        <td className="py-2 text-xs">{student.startDate} <br/><span className="text-gray-500">to</span> {student.endDate}</td>
+                                        <td className="py-2 text-green-400 font-bold">Rs. {student.price}</td>
+                                        <td className="py-2 text-right">
+                                            <button onClick={() => handleRemoveFromPending(idx)} className="text-red-500 hover:text-red-400"><X size={16}/></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+
+            {/* ========================================================================= */}
+            {/* EXISTING STUDENTS LIST */}
+            {/* ========================================================================= */}
             <div className="bg-[#111] border border-white/10 rounded-2xl overflow-hidden">
                 <div className="p-6 border-b border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
-                    <h2 className="text-xl font-bold">Manage Students</h2>
+                    <h2 className="text-xl font-bold">Manage Existing Students</h2>
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
                         <input 
                             type="text" placeholder="Search by name, email, or number..." 
                             value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 pr-4 py-2 bg-[#222] border border-white/10 rounded-xl text-sm focus:border-amber-500 outline-none w-[300px]"
+                            className="pl-10 pr-4 py-2 bg-[#222] border border-white/10 rounded-xl text-sm focus:border-amber-500 outline-none w-full md:w-[300px]"
                         />
                     </div>
                 </div>
@@ -176,22 +266,29 @@ export default function InstituteStudents() {
                             <tr className="bg-[#1a1a1a] text-gray-400 text-xs uppercase tracking-wider">
                                 <th className="p-4">Student Info</th>
                                 <th className="p-4">WhatsApp Number</th>
-                                <th className="p-4">Paid Amount</th>
+                                <th className="p-4">Plan / Paid</th>
                                 <th className="p-4">Expiry Date</th>
                                 <th className="p-4 text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
                             {filteredStudents.map(student => {
-                                const isExpired = new Date(student.expiry_date) < new Date();
+                                const expiryDate = student.expiry_date || student.end_date;
+                                const isExpired = new Date(expiryDate) < new Date();
+                                const amountPaid = student.amount || student.price || 0;
+                                const planName = student.plan_type || 'Unknown Plan';
+
                                 return (
                                 <tr key={student.id} className="hover:bg-white/[0.02] transition">
                                     <td className="p-4">
-                                        <p className="font-bold text-sm text-white">{student.student_name || 'N/A'}</p>
-                                        <p className="text-xs text-gray-500">{student.user_email}</p>
+                                        <p className="font-bold text-sm text-white">{student.student_name || student.name || 'N/A'}</p>
+                                        <p className="text-xs text-gray-500">{student.user_email || student.email}</p>
                                     </td>
-                                    <td className="p-4 text-sm text-gray-300">{student.whatsapp_number}</td>
-                                    <td className="p-4 text-sm font-medium text-green-400">Rs. {student.amount}</td>
+                                    <td className="p-4 text-sm text-gray-300">{student.whatsapp_number || student.whatsapp}</td>
+                                    <td className="p-4">
+                                        <p className="text-xs bg-white/10 inline-block px-2 py-1 rounded font-bold mb-1">{planName}</p>
+                                        <p className="text-sm font-medium text-green-400">Rs. {amountPaid}</p>
+                                    </td>
                                     <td className="p-4">
                                         {editingId === student.id ? (
                                             <div className="flex items-center gap-2">
@@ -202,9 +299,9 @@ export default function InstituteStudents() {
                                         ) : (
                                             <div className="flex items-center gap-3">
                                                 <span className={`text-sm font-bold px-2 py-1 rounded-md ${isExpired ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
-                                                    {new Date(student.expiry_date).toLocaleDateString()}
+                                                    {expiryDate ? new Date(expiryDate).toLocaleDateString() : 'N/A'}
                                                 </span>
-                                                <button onClick={() => { setEditingId(student.id); setEditDate(student.expiry_date.split('T')[0]); }} className="text-gray-500 hover:text-amber-500 transition"><Edit2 size={14}/></button>
+                                                <button onClick={() => { setEditingId(student.id); setEditDate(expiryDate ? expiryDate.split('T')[0] : ''); }} className="text-gray-500 hover:text-amber-500 transition"><Edit2 size={14}/></button>
                                             </div>
                                         )}
                                     </td>

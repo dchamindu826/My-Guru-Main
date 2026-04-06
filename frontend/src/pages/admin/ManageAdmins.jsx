@@ -37,6 +37,18 @@ export default function ManageAdmins() {
     }
   };
 
+  const handleDelete = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this admin?")) return;
+    
+    try {
+        await api.delete(`/admin/delete-admin/${id}`);
+        alert("Admin Deleted!");
+        fetchAdmins(); // Refresh the list
+    } catch (err) {
+        alert("Failed to delete: " + (err.response?.data?.error || err.message));
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#050505] text-white p-8">
       <h1 className="text-3xl font-black mb-8 flex items-center gap-3">
@@ -115,10 +127,14 @@ export default function ManageAdmins() {
                                 <td className="p-4 text-sm text-gray-300">{admin.role}</td>
                                 <td className="p-4 text-xs text-gray-500">{new Date(admin.created_at).toLocaleDateString()}</td>
                                 <td className="p-4 text-right">
-                                    <button className="text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition" title="Delete (Logic pending)">
-                                        <Trash2 size={16}/>
-                                    </button>
-                                </td>
+    <button 
+        onClick={() => handleDelete(admin.id)} 
+        className="text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition" 
+        title="Delete Admin"
+    >
+        <Trash2 size={16}/>
+    </button>
+</td>
                             </tr>
                         )) : (
                             <tr><td colSpan="4" className="p-8 text-center text-gray-500">No admins found.</td></tr>

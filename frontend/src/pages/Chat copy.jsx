@@ -7,9 +7,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api'; 
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase'; // Database එකෙන් Credits ගන්න ඕන නිසා මේක දැම්මා
 import logo from '../assets/logo.png'; 
-import { FaWhatsapp } from 'react-icons/fa';
+import { FaWhatsapp } from 'react-icons/fa'; // WhatsApp අයිකන් එකට
 
 const SUBJECT_THEMES = {
   "Science": "from-blue-600 to-cyan-500",
@@ -32,17 +32,19 @@ export default function Chat() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
+  // 🔥 Route Protection: User ලොග් වෙලා නැත්නම් මුල් පිටුවට හරවනවා
   useEffect(() => {
     if (!user) {
         navigate('/');
     }
   }, [user, navigate]);
   
+  // --- STATE ---
   const [input, setInput] = useState(""); 
   const [userPlan, setUserPlan] = useState('free'); 
   const [isUnlimited, setIsUnlimited] = useState(false);
-  const [maxCredits, setMaxCredits] = useState(2); 
-  const [creditsLeft, setCreditsLeft] = useState(2); 
+  const [maxCredits, setMaxCredits] = useState(3);
+  const [creditsLeft, setCreditsLeft] = useState(3); 
   const [isSidebarOpen, setSidebarOpen] = useState(true); 
   const [isTyping, setIsTyping] = useState(false);
   
@@ -50,7 +52,7 @@ export default function Chat() {
   const [activeSubject, setActiveSubject] = useState(null); 
   const [medium, setMedium] = useState("Sinhala");
 
-  const [showWAPopup, setShowWAPopup] = useState(false);
+  const [showWAPopup, setShowWAPopup] = useState(false); // Popup State
 
   const [sessions, setSessions] = useState(() => {
       const saved = localStorage.getItem(`myguru_sessions_${user?.uid || 'guest'}`);
@@ -72,11 +74,12 @@ export default function Chat() {
       { icon: <Sparkles size={14} className="text-purple-400"/>, text: "විභාගයට ගැලපෙන පිළිතුරක් නිර්මාණය කරමින්..." }
   ];
 
+  // Show Popup on Load (Only for logged-in users)
   useEffect(() => {
       if (!user) return;
       const hasSeenPopup = sessionStorage.getItem('myguru_wa_popup_seen');
       if (!hasSeenPopup) {
-          setTimeout(() => setShowWAPopup(true), 1500); 
+          setTimeout(() => setShowWAPopup(true), 1500); // තත්පර 1.5 කින් එන්න
       }
   }, [user]);
 
@@ -103,50 +106,47 @@ export default function Chat() {
   const currentMessages = activeSubject ? (sessions[activeSubject] || []) : [];
   const activeTheme = activeSubject ? SUBJECT_THEMES[activeSubject] : "from-gray-700 to-gray-600";
 
+  // 🔥 Database එකෙන් Credits ගන්න එක (Syncs with WhatsApp)
+  // 🔥 Database එකෙන් Credits ගන්න එක සහ Session Security Check එක
   const fetchUserCredits = async () => {
       if (!user) return;
       try {
           const userId = user.uid || user.id;
+          
+          // 1. Session Security Check
           const localToken = localStorage.getItem(`myguru_session_token_${userId}`);
           
+          // 2. Fetch data from DB
           const { data: profileData, error: profileError } = await supabase
               .from('profiles')
               .select('credits_used, last_reset_date, current_session_token')
               .eq('id', userId)
               .maybeSingle();
           
-          if (profileError) console.error("Profile Error:", profileError);
+          if (profileError) throw profileError;
 
+          // 🛑 3. Multi-Device Detection Logic
           if (profileData && profileData.current_session_token) {
-              if (localToken && localToken !== profileData.current_session_token) {
+              if (localToken !== profileData.current_session_token) {
                   alert("You can use one account from one device only");
                   await logout();
                   navigate('/');
-                  return; 
+                  return; // Stop execution
               }
           }
 
-          const res = await api.get(`/payments/user/${encodeURIComponent(userId)}?email=${encodeURIComponent(user.email || '')}`);
-          const dataArr = Array.isArray(res.data) ? res.data : [];
-          const approvedOrder = dataArr.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).find(o => o.status === 'approved');
+          // 4. Update Credits Logic (පරණ කේතයමයි)
+          const res = await api.get(`/payments/user/${userId}?email=${user.email}`);
+          const approvedOrder = res.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).find(o => o.status === 'approved');
           
-          let usedDB = profileData?.credits_used ? Number(profileData.credits_used) : 0;
+          let usedDB = profileData?.credits_used || 0;
           let lastReset = profileData?.last_reset_date;
-          
-          const d = new Date();
-          let todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-          let dbDate = lastReset ? lastReset.split('T')[0] : null;
+          let todayStr = new Date().toISOString().split('T')[0];
 
-          if (dbDate !== todayStr) {
+          if (lastReset !== todayStr) {
              usedDB = 0;
-             // 🔥 දැන් Security Error එක එන්නේ නෑ, RPC එකෙන් Update වෙන්නේ!
-             supabase.rpc('reset_daily_credits', { userid: userId, today_date: todayStr })
-                 .then(({error}) => {
-                     if(error) console.log("Date Reset Error:", error.message);
-                 });
           }
 
-          
           if (approvedOrder) {
               const pkgName = approvedOrder.package_name.toLowerCase();
               if (pkgName.includes('genius')) { 
@@ -164,8 +164,8 @@ export default function Chat() {
           } else { 
               setUserPlan('free'); 
               setIsUnlimited(false); 
-              setMaxCredits(2);
-              setCreditsLeft(Math.max(0, 2 - usedDB)); 
+              setMaxCredits(3);
+              setCreditsLeft(Math.max(0, 3 - usedDB)); 
           }
       } catch (error) { console.error("Credit/Session Fetch Error:", error); }
   };
@@ -174,11 +174,13 @@ export default function Chat() {
       fetchUserCredits();
   }, [user]);
 
+  // Refresh credits every 10 seconds just in case they used WhatsApp while having the site open
   useEffect(() => {
       if (!user) return;
-      const interval = setInterval(fetchUserCredits, 60000);
+      const interval = setInterval(fetchUserCredits, 10000);
       return () => clearInterval(interval);
   }, [user]);
+
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -229,14 +231,6 @@ export default function Chat() {
     reader.onerror = error => reject(error);
   });
 
-  // 🔥 මෙන්න මේක තමයි මගහැරුණු Function එක!
-  const addMessageToSession = (subject, msg) => {
-      setSessions(prev => ({
-          ...prev,
-          [subject]: [...(prev[subject] || []), msg] 
-      }));
-  };
-
   const handleSend = async (e) => {
     e.preventDefault();
     if ((!input.trim() && !selectedImage) || !activeSubject) return;
@@ -246,7 +240,7 @@ export default function Chat() {
             id: Date.now(), 
             role: 'ai', 
             content: userPlan === 'free' 
-                ? "🛑 අද දවසේ ඔයාට අහන්න පුළුවන් ප්‍රශ්න ප්‍රමාණය (2/2) ඉවරයි පුතේ. තව ප්‍රශ්න අහන්න වම් පැත්තේ මෙනු එකේ පහළින්ම තියෙන 'Upgrade To Premium ⚡' බොත්තම ක්ලික් කරලා Unlimited Plan එකකට යාවත්කාලීන (Upgrade) කරන්න."
+                ? "🛑 අද දවසේ ඔයාට අහන්න පුළුවන් ප්‍රශ්න ප්‍රමාණය (3/3) ඉවරයි පුතේ. තව ප්‍රශ්න අහන්න වම් පැත්තේ මෙනු එකේ පහළින්ම තියෙන 'Upgrade To Premium ⚡' බොත්තම ක්ලික් කරලා Unlimited Plan එකකට යාවත්කාලීන (Upgrade) කරන්න."
                 : "🛑 ඔයාගේ පැකේජයේ ප්‍රශ්න ප්‍රමාණය අවසන් වී ඇත. කරුණාකර මෙනුවෙන් නැවත Plans පිටුවට ගොස් Upgrade කරන්න.", 
             isSystem: true 
         });
@@ -276,16 +270,16 @@ export default function Chat() {
 
     const userId = user?.uid || user?.id;
 
-    // 🔥 Function එකක් නැතුව, කෙලින්ම Database එක Update කිරීම (Xe Error එක වළක්වන්න)
+    // 🔥 Update DB usage immediately for instant UI feedback
     if (!isUnlimited && userId) {
         setCreditsLeft(prev => prev - 1);
         
-        // RPC එක හරහා පමණක් Update කරන්න (එතකොට Security 401 Error එක එන්නේ නෑ)
-        supabase.rpc('increment_credits', { userid: userId })
-            .then(({ error }) => {
-                if (error) console.error("Credit Update Error:", error.message);
-            })
-            .catch(err => console.error("Credit RPC Error:", err));
+        // Promise එක async/await හරහා නිවැරදිව handle කිරීම
+        const updateCredits = async () => {
+            const { error } = await supabase.rpc('increment_credits', { userid: userId });
+            if (error) console.error("Error updating credits:", error);
+        };
+        updateCredits();
     }
 
     try {
@@ -313,9 +307,18 @@ export default function Chat() {
 
     } catch (e) {
         addMessageToSession(activeSubject, { id: Date.now(), role: 'ai', content: "⚠️ System busy. පොඩ්ඩක් ඉඳලා ආයේ ට්‍රයි කරන්න." });
+        // Optional: Revert credit if failed
     } finally { setIsTyping(false); }
   };
 
+  const addMessageToSession = (subject, msg) => {
+      setSessions(prev => ({
+          ...prev,
+          [subject]: [...(prev[subject] || []), msg] 
+      }));
+  };
+
+  // 🔥 Loading screen for when user is null, before redirecting
   if (!user) {
     return (
         <div className="flex h-screen bg-[#050505] items-center justify-center text-white">
@@ -330,6 +333,7 @@ export default function Chat() {
   return (
     <div className="flex h-screen font-sans bg-[#050505] text-white overflow-hidden selection:bg-amber-500/30">
       
+      {/* --- WHATSAPP POPUP MODAL --- */}
       <AnimatePresence>
         {showWAPopup && (
             <motion.div 
@@ -364,6 +368,7 @@ export default function Chat() {
         )}
       </AnimatePresence>
 
+      {/* --- SIDEBAR --- */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#090909] border-r border-white/5 flex flex-col transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="p-6 flex items-center justify-between">
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
@@ -430,8 +435,10 @@ export default function Chat() {
         </div>
       </aside>
 
+      {/* --- CHAT AREA --- */}
       <main className="flex-1 flex flex-col md:ml-72 relative bg-black">
         
+        {/* Header */}
         <div className="absolute top-0 left-0 right-0 z-10 px-6 py-4 flex justify-between items-center bg-gradient-to-b from-[#050505] via-[#050505]/95 to-transparent">
             <div className="flex items-center gap-3">
                 <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 bg-[#111] rounded-lg text-gray-400"><Menu size={20}/></button>
@@ -444,6 +451,7 @@ export default function Chat() {
                             <span className="bg-black/20 backdrop-blur-md text-white text-[10px] font-bold px-2 py-0.5 rounded border border-white/20">O/L</span>
                         </div>
 
+                        {/* Medium Selector */}
                         <div className="bg-[#111]/80 backdrop-blur-md border border-white/10 p-1 rounded-xl flex gap-1">
                             {['Sinhala', 'English', 'Tamil'].map((m) => (
                                 <button 
@@ -462,6 +470,7 @@ export default function Chat() {
             </div>
         </div>
 
+        {/* Content Area */}
         {!activeSubject ? (
             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
                 <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-purple-600 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-blue-500/20"><Bot size={40} className="text-white"/></div>
@@ -537,6 +546,7 @@ export default function Chat() {
                     <div ref={messagesEndRef} />
                 </div>
 
+                {/* Input Area */}
                 <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-black via-black to-transparent z-20">
                     <div className="max-w-3xl mx-auto">
                         {imagePreview && (
